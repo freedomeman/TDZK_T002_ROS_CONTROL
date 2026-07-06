@@ -1,0 +1,8 @@
+<library path="robot_hardware_node">
+  <class
+    name="robot_hardware/RobotHardwareNode"
+    type="robot_hardware::RobotHardwareNode"
+    base_class_type="hardware_interface::SystemInterface">
+    <description>ros2_control hardware abstraction for the CAN motor drivers.</description>
+  </class>
+</library>

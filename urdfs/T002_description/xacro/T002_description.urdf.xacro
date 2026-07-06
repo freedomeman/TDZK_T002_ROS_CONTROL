@@ -1,0 +1,135 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="T002_Neck">
+
+  <!-- ===== ros2_control hardware plugin ===== -->
+  <xacro:include filename="$(find t002_description)/xacro/ros2control.xacro"/>
+  <xacro:property name="joints_config_file"
+    value="$(find t002_description)/xacro/joints_config.yaml"/>
+  <xacro:property name="imu_config_file"
+    value="$(find t002_description)/xacro/imu_config.yaml"/>
+
+  <xacro:t002_ros2_control
+    name="T002Hardware"
+    joints_config_file="${joints_config_file}"
+    imu_config_file="${imu_config_file}"/>
+
+  <!-- ===== base_link ===== -->
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0.055815 -0.057719 -0.10153" rpy="0 0 0"/>
+      <mass value="0.23606"/>
+      <inertia ixx="0.00015043" ixy="7.6217E-09" ixz="-3.8509E-08"
+               iyy="0.00027587" iyz="2.2368E-07" izz="0.00039725"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://t002_description/meshes/base_link.STL"/>
+      </geometry>
+      <material name=""><color rgba="1 1 1 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://t002_description/meshes/base_link.STL"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ===== Ylink ===== -->
+  <link name="Ylink">
+    <inertial>
+      <origin xyz="-0.0006989 0.010921 0.020993" rpy="0 0 0"/>
+      <mass value="0.17216"/>
+      <inertia ixx="0.00011989" ixy="5.0469E-08" ixz="1.0432E-06"
+               iyy="0.00011905" iyz="-1.6433E-05" izz="0.00013647"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://t002_description/meshes/Ylink.STL"/>
+      </geometry>
+      <material name=""><color rgba="1 1 1 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://t002_description/meshes/Ylink.STL"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ===== yaw joint ===== -->
+  <joint name="yaw" type="revolute">
+    <origin xyz="0.055826 -0.057765 -0.065609" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="Ylink"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14" upper="3.14" effort="10" velocity="10"/>
+  </joint>
+
+  <!-- ===== Plink ===== -->
+  <link name="Plink">
+    <inertial>
+      <origin xyz="-0.00060859 0.0094805 2.065E-08" rpy="0 0 0"/>
+      <mass value="0.0021745"/>
+      <inertia ixx="5.685E-08" ixy="-5.9793E-11" ixz="-1.5825E-23"
+               iyy="5.7771E-08" iyz="-6.2549E-24" izz="6.269E-08"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://t002_description/meshes/Plink.STL"/>
+      </geometry>
+      <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://t002_description/meshes/Plink.STL"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ===== pitch joint ===== -->
+  <joint name="pitch" type="revolute">
+    <origin xyz="-0.001057 0.016466 0.07945" rpy="0 0 0"/>
+    <parent link="Ylink"/>
+    <child link="Plink"/>
+    <axis xyz="0.064062 -0.99795 0"/>
+    <limit lower="-0.35" upper="0.35" effort="10" velocity="10"/>
+  </joint>
+
+  <!-- ===== Rlink ===== -->
+  <link name="Rlink">
+    <inertial>
+      <origin xyz="0.0071042 -0.035816 0.11657" rpy="0 0 0"/>
+      <mass value="1.9595"/>
+      <inertia ixx="0.0039007" ixy="-0.0001003" ixz="-2.0935E-05"
+               iyy="0.0055561" iyz="9.9024E-05" izz="0.0058803"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://t002_description/meshes/Rlink.STL"/>
+      </geometry>
+      <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://t002_description/meshes/Rlink.STL"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ===== row joint ===== -->
+  <joint name="roll" type="revolute">
+    <origin xyz="-0.0046004 0.0092242 0" rpy="0 0 0"/>
+    <parent link="Plink"/>
+    <child link="Rlink"/>
+    <axis xyz="-0.99795 -0.064062 0"/>
+    <limit lower="-0.35" upper="0.35" effort="10" velocity="10"/>
+  </joint>
+
+</robot>

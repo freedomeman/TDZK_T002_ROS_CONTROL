@@ -1,0 +1,8 @@
+<library path="t002_controller">
+  <class
+    name="t002_controller/T002Controller"
+    type="t002_controller::T002Controller"
+    base_class_type="controller_interface::ControllerInterface">
+    <description>T002 humanoid robot controller with PD torque output.</description>
+  </class>
+</library>

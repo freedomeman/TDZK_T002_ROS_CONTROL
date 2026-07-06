@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="t002_ros2_control_joint" params="joint">
+    <joint name="${joint.name}">
+      <param name="motor_id">${joint.motor_id}</param>
+      <param name="interface">${joint.interface}</param>
+      <param name="interface_type">${joint.interface_type}</param>
+      <param name="motor_type">${joint.motor_type}</param>
+      <param name="motor_model">${joint.motor_model}</param>
+      <param name="master_id_offset">${joint.master_id_offset}</param>
+      <param name="direction">${joint.direction}</param>
+      <param name="motor_zero_offset">${joint.zero_offset}</param>
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="t002_ros2_control_imu" params="imu">
+    <sensor name="${imu.name}">
+      <param name="interface">${imu.interface}</param>
+      <param name="interface_type">${imu.interface_type}</param>
+      <param name="imu_type">${imu.imu_type}</param>
+      <param name="baudrate">${imu.baudrate}</param>
+      <state_interface name="orientation.x"/>
+      <state_interface name="orientation.y"/>
+      <state_interface name="orientation.z"/>
+      <state_interface name="orientation.w"/>
+      <state_interface name="angular_velocity.x"/>
+      <state_interface name="angular_velocity.y"/>
+      <state_interface name="angular_velocity.z"/>
+      <state_interface name="linear_acceleration.x"/>
+      <state_interface name="linear_acceleration.y"/>
+      <state_interface name="linear_acceleration.z"/>
+    </sensor>
+  </xacro:macro>
+
+  <xacro:macro name="t002_ros2_control" params="
+      name:=T002Hardware
+      joints_config_file:=joints_config.yaml
+      imu_config_file:=imu_config.yaml">
+    <xacro:property name="joints_config" value="${xacro.load_yaml(joints_config_file)}"/>
+    <xacro:property name="imu_config" value="${xacro.load_yaml(imu_config_file)}"/>
+
+    <ros2_control name="${name}" type="system">
+      <hardware>
+        <plugin>robot_hardware/RobotHardwareNode</plugin>
+      </hardware>
+      <!-- 动态关节数 -->
+      <xacro:if value="${len(joints_config['joints']) > 0}">
+        <xacro:t002_ros2_control_joint joint="${joints_config['joints'][0]}"/>
+      </xacro:if>
+      <xacro:if value="${len(joints_config['joints']) > 1}">
+        <xacro:t002_ros2_control_joint joint="${joints_config['joints'][1]}"/>
+      </xacro:if>
+      <xacro:if value="${len(joints_config['joints']) > 2}">
+        <xacro:t002_ros2_control_joint joint="${joints_config['joints'][2]}"/>
+      </xacro:if>
+      <!-- 动态IMU -->
+      <xacro:if value="${imu_config['imus'] and len(imu_config['imus']) > 0}">
+        <xacro:t002_ros2_control_imu imu="${imu_config['imus'][0]}"/>
+      </xacro:if>
+    </ros2_control>
+  </xacro:macro>
+</robot>

@@ -1,0 +1,22 @@
+# ROS 2
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# 编译产物
+*.o
+*.so
+
+# 系统文件
+.DS_Store
+Thumbs.db
