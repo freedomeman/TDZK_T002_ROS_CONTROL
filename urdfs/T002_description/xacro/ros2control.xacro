@@ -18,37 +18,16 @@
     </joint>
   </xacro:macro>
 
-  <xacro:macro name="t002_ros2_control_imu" params="imu">
-    <sensor name="${imu.name}">
-      <param name="interface">${imu.interface}</param>
-      <param name="interface_type">${imu.interface_type}</param>
-      <param name="imu_type">${imu.imu_type}</param>
-      <param name="baudrate">${imu.baudrate}</param>
-      <state_interface name="orientation.x"/>
-      <state_interface name="orientation.y"/>
-      <state_interface name="orientation.z"/>
-      <state_interface name="orientation.w"/>
-      <state_interface name="angular_velocity.x"/>
-      <state_interface name="angular_velocity.y"/>
-      <state_interface name="angular_velocity.z"/>
-      <state_interface name="linear_acceleration.x"/>
-      <state_interface name="linear_acceleration.y"/>
-      <state_interface name="linear_acceleration.z"/>
-    </sensor>
-  </xacro:macro>
-
   <xacro:macro name="t002_ros2_control" params="
       name:=T002Hardware
+      hardware_plugin:=robot_hardware/RobotHardwareNode
       joints_config_file:=joints_config.yaml
       imu_config_file:=imu_config.yaml">
     <xacro:property name="joints_config" value="${xacro.load_yaml(joints_config_file)}"/>
-    <xacro:property name="imu_config" value="${xacro.load_yaml(imu_config_file)}"/>
-
     <ros2_control name="${name}" type="system">
       <hardware>
-        <plugin>robot_hardware/RobotHardwareNode</plugin>
+        <plugin>${hardware_plugin}</plugin>
       </hardware>
-      <!-- 动态关节数 -->
       <xacro:if value="${len(joints_config['joints']) > 0}">
         <xacro:t002_ros2_control_joint joint="${joints_config['joints'][0]}"/>
       </xacro:if>
@@ -58,9 +37,20 @@
       <xacro:if value="${len(joints_config['joints']) > 2}">
         <xacro:t002_ros2_control_joint joint="${joints_config['joints'][2]}"/>
       </xacro:if>
-      <!-- 动态IMU -->
-      <xacro:if value="${imu_config['imus'] and len(imu_config['imus']) > 0}">
-        <xacro:t002_ros2_control_imu imu="${imu_config['imus'][0]}"/>
+      <xacro:if value="${len(joints_config['joints']) > 3}">
+        <xacro:t002_ros2_control_joint joint="${joints_config['joints'][3]}"/>
+      </xacro:if>
+      <xacro:if value="${len(joints_config['joints']) > 4}">
+        <xacro:t002_ros2_control_joint joint="${joints_config['joints'][4]}"/>
+      </xacro:if>
+      <xacro:if value="${len(joints_config['joints']) > 5}">
+        <xacro:t002_ros2_control_joint joint="${joints_config['joints'][5]}"/>
+      </xacro:if>
+      <xacro:if value="${len(joints_config['joints']) > 6}">
+        <xacro:t002_ros2_control_joint joint="${joints_config['joints'][6]}"/>
+      </xacro:if>
+      <xacro:if value="${len(joints_config['joints']) > 7}">
+        <xacro:t002_ros2_control_joint joint="${joints_config['joints'][7]}"/>
       </xacro:if>
     </ros2_control>
   </xacro:macro>

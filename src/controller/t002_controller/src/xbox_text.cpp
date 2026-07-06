@@ -2,6 +2,8 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <sstream>
+#include <iomanip>
 #include <fcntl.h>
 #include <linux/joystick.h>
 #include <unistd.h>
@@ -45,14 +47,13 @@ public:
     pub_pose_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/target_pose", 10);
 
     const auto period = std::chrono::duration<double>(1.0 / publish_rate);
-    dt_ = 1.0 / publish_rate;
     timer_ = this->create_wall_timer(period, std::bind(&XboxText::timer_callback, this));
     last_time_ = this->get_clock()->now();
 
     RCLCPP_INFO(this->get_logger(), "XboxText ready → /target_pose (积分模式)");
     RCLCPP_INFO(this->get_logger(),
       "  ch2→yaw_rate[%.3f]  ch5→pitch_rate[%.3f]  ch4→roll_rate[%.3f]",
-      yaw_gain_, pitch_gain_, roll_gain_);
+      0.3, 0.3, 0.3);
   }
 
   ~XboxText() override
@@ -79,23 +80,39 @@ private:
       }
     }
 
-    // 积分：目标 += 摇杆输入 × 增益 × dt
+    // ── 控制逻辑 ──
     auto now = this->get_clock()->now();
     double dt = (now - last_time_).seconds();
-    if (dt > 0.0 && dt < 0.1) {  // 防止异常大跳变
-      yaw_target_   += axis_raw(2) * yaw_gain_   * dt;
-      pitch_target_ += axis_raw(5) * pitch_gain_ * dt;
-      roll_target_  += axis_raw(4) * roll_gain_  * dt;
+    if (dt < 0.0 || dt > 0.1) { dt = 0.02; }  // 防止异常跳变
 
-      // 钳位
-      yaw_target_   = std::clamp(yaw_target_,   -0.6, 0.6);
-      pitch_target_ = std::clamp(pitch_target_, -0.3, 0.3);
-      roll_target_  = std::clamp(roll_target_,  -0.3, 0.3);
-    }
+    // 脖子 pitch/roll: 左摇杆 积分 (ch5→pitch, ch4→roll)
+    pitch_target_ += axis_raw(5) * 0.3 * dt;
+    roll_target_  += axis_raw(4) * 0.3 * dt;
+    pitch_target_  = std::clamp(pitch_target_, -0.35, 0.35);
+    roll_target_   = std::clamp(roll_target_,  -0.35, 0.35);
+
+    // 脖子 yaw: 按键 0(左) / 2(右)
+    if (button_pressed(0)) neck_yaw_target_ -= 0.3 * dt;
+    if (button_pressed(2)) neck_yaw_target_ += 0.3 * dt;
+    neck_yaw_target_ = std::clamp(neck_yaw_target_, -3.14, 3.14);
+
+    // 腰部: 按键 6(右) / 7(左)
+    if (button_pressed(6)) waist_target_ -= 0.3 * dt;
+    if (button_pressed(7)) waist_target_ += 0.3 * dt;
+
+    // 底盘: 右摇杆 (ch3→vx, ch2→vy), ch0→wz
+    vx_target_ = axis_raw(3) * 10.0;
+    vy_target_ = axis_raw(2) * 10.0;
+    wz_target_ = axis_raw(0) * 3.0;
+
     last_time_ = now;
 
     publish_pose();
     log_all_channels();
+  }
+
+  inline bool button_pressed(int idx) const {
+    return (idx >= 0 && static_cast<size_t>(idx) < buttons_.size()) && buttons_[idx] != 0;
   }
 
   double axis_raw(int index) const
@@ -107,7 +124,17 @@ private:
   void publish_pose()
   {
     auto msg = std_msgs::msg::Float64MultiArray();
-    msg.data = {yaw_target_, pitch_target_, roll_target_};
+    // 顺序: [waist, neck_yaw, neck_pitch, neck_roll, vx, vy, wz, reserve]
+    msg.data = std::vector<double>{
+      waist_target_,
+      neck_yaw_target_,
+      pitch_target_,
+      roll_target_,
+      vx_target_,
+      vy_target_,
+      wz_target_,
+      0.0
+    };
     pub_pose_->publish(msg);
   }
 
@@ -119,21 +146,20 @@ private:
     last_log = now;
 
     RCLCPP_INFO(this->get_logger(),
-      "yaw=%.3f  pitch=%.3f  roll=%.3f  (raw ch2=%.2f ch5=%.2f ch4=%.2f)",
-      yaw_target_, pitch_target_, roll_target_,
-      axis_raw(2), axis_raw(5), axis_raw(4));
+      "waist=%.3f n_yaw=%.3f n_pitch=%.3f n_roll=%.3f "
+      "vx=%.2f vy=%.2f wz=%.2f",
+      waist_target_, neck_yaw_target_, pitch_target_, roll_target_,
+      vx_target_, vy_target_, wz_target_);
   }
 
-  // ── 参数 ──────────────────────────────────────────────
-  static constexpr double yaw_gain_   = 0.3;   // rad/s per full stick
-  static constexpr double pitch_gain_ = 0.4;
-  static constexpr double roll_gain_  = 0.4;
-
-  // ── 积分状态 ──────────────────────────────────────────
-  double yaw_target_{0.0};
+  // ── 状态 ──
+  double waist_target_{0.0};
+  double neck_yaw_target_{0.0};
   double pitch_target_{0.0};
   double roll_target_{0.0};
-  double dt_{0.02};
+  double vx_target_{0.0};
+  double vy_target_{0.0};
+  double wz_target_{0.0};
   rclcpp::Time last_time_;
 
   // ── 设备 ──────────────────────────────────────────────
@@ -151,3 +177,6 @@ int main(int argc, char * argv[])
   rclcpp::shutdown();
   return 0;
 }
+
+
+

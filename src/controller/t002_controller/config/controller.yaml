@@ -1,8 +1,8 @@
-# T002 Neck Controller configuration (ROS 2 Humble)
-/**:  # applies to all nodes
+# T002 Controller (8 joints)
+/**:
   controller_manager:
     ros__parameters:
-      update_rate: 250  # Hz (双电机降频，避免USB-CAN TX缓冲溢出)
+      update_rate: 250
       t002_controller:
         type: t002_controller/T002Controller
       joint_state_broadcaster:
@@ -11,49 +11,32 @@
   joint_state_broadcaster:
     ros__parameters:
       update_rate: 250
+      joints:
+        - waist_joint
+        - neck_yaw_joint
+        - neck_pitch_joint
+        - neck_roll_joint
+        - wheel_left_yaw_joint
+        - wheel_left_roll_joint
+        - wheel_right_yaw_joint
+        - wheel_right_roll_joint
 
   t002_controller:
     ros__parameters:
       update_rate: 250
       command_topic: "~/command"
-
-      joints:
-        - yaw
-        - pitch
-        - roll
-
-      command_interfaces:
-        - effort
-
-      state_interfaces:
-        - position
-        - velocity
-
+      joints: [waist_joint, neck_yaw_joint, neck_pitch_joint, neck_roll_joint,
+               wheel_left_yaw_joint, wheel_left_roll_joint, wheel_right_yaw_joint, wheel_right_roll_joint]
+      command_interfaces: [effort]
+      state_interfaces: [position, velocity]
+      joint_modes: [position, position, torque, torque, position, velocity, position, velocity]
       joint_limits:
-        - -3.14    # yaw 下限
-        - 3.14     # yaw 上限
-        - -1.5    # pitch 下限
-        - 1.5     # pitch 上限
-        - -1.5    # roll 下限
-        - 1.5     # roll 上限
-
+        - -3.14; 3.14; -3.14; 3.14; -0.35; 0.35; -0.35; 0.35
+        - -6.28; 6.28; -50.0; 50.0; -6.28; 6.28; -50.0; 50.0
       pd:
-        - 0.0 # - 4.0     # yaw Kp
-        - 0.0 # - 0.04   # yaw Kd
-        - 1.0 # - 0.025    # pitch Kp
-        - 0.0 # - 0.001  # pitch Kd
-        - 1.0 # - 0.025    # roll Kp
-        - 0.0 # - 0.001  # roll Kd
-
+        - 5.0; 0.1; 5.0; 0.1; 0.0; 0.0; 0.0; 0.0
+        - 5.0; 0.1; 1.0; 0.0; 5.0; 0.1; 1.0; 0.0
       effort_limits:
-        - -5.0     # yaw 下限
-        - 5.0      # yaw 上限
-        - -2.0     # pitch 下限
-        - 2.0      # pitch 上限
-        - -2.0     # roll 下限
-        - 2.0      # roll 上限
-
-      default_joint_positions:
-        - 0.0      # yaw
-        - 0.0      # pitch
-        - 0.0      # roll
+        - -5.0; 5.0; -5.0; 5.0; -1.5; 1.5; -1.5; 1.5
+        - -5.0; 5.0; -5.0; 5.0; -5.0; 5.0; -5.0; 5.0
+      default_joint_positions: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

@@ -13,6 +13,8 @@
 namespace t002_controller
 {
 
+enum class JointMode { Position, Velocity, Torque };
+
 struct Joint
 {
   std::string name;
@@ -64,6 +66,7 @@ private:
   std::vector<double> pd_kps_;
   std::vector<double> pd_kds_;
   std::vector<double> effort_limits_;
+  std::vector<JointMode> joint_modes_;
 
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cmd_sub_;
   std::string command_topic_{"~/command"};

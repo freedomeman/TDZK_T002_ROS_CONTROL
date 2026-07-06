@@ -62,15 +62,42 @@ T002Controller::state_interface_configuration() const
   return conf;
 }
 
+
+namespace {
+std::vector<double> parse_semicolon_list(const std::vector<std::string> & strs) {
+  std::vector<double> out;
+  for (const auto & s : strs) {
+    std::istringstream iss(s);
+    std::string token;
+    while (std::getline(iss, token, ';')) {
+      try { out.push_back(std::stod(token)); }
+      catch (...) { out.push_back(0.0); }
+    }
+  }
+  return out;
+}
+}  // namespace
+
 controller_interface::CallbackReturn T002Controller::on_configure(
   const rclcpp_lifecycle::State & /*prev*/)
 {
   RCLCPP_INFO(get_node()->get_logger(), "T002Controller on_configure ---");
 
   std::vector<double> pd_flat;
-  if (!get_node()->get_parameter("pd", pd_flat)) {
-    RCLCPP_WARN(get_node()->get_logger(), "Missing 'pd', using 0");
-    pd_flat.assign(joint_names_.size() * 2U, 0.0);//如果外部的pd为空就给默认0
+  {
+    std::vector<std::string> pd_strs;
+    if (get_node()->get_parameter("pd", pd_strs)) {
+      pd_flat = parse_semicolon_list(pd_strs);
+    } else {
+      std::vector<double> pd_dbls;
+      if (get_node()->get_parameter("pd", pd_dbls)) {
+        pd_flat = pd_dbls;
+      }
+    }
+    if (pd_flat.empty()) {
+      RCLCPP_WARN(get_node()->get_logger(), "Missing 'pd', using 0");
+      pd_flat.assign(joint_names_.size() * 2U, 0.0);
+    }
   }
   pd_kps_.resize(joint_names_.size(), 0.0);//把pd参数变成和joint长度一样
   pd_kds_.resize(joint_names_.size(), 0.0);
@@ -82,9 +109,37 @@ controller_interface::CallbackReturn T002Controller::on_configure(
     }
   }
 
-  get_node()->get_parameter("joint_limits", joint_limits_);
-  get_node()->get_parameter("effort_limits", effort_limits_);
+  {
+    std::vector<std::string> jl_strs;
+    if (get_node()->get_parameter("joint_limits", jl_strs))
+      joint_limits_ = parse_semicolon_list(jl_strs);
+    else
+      get_node()->get_parameter("joint_limits", joint_limits_);
+  }
+  {
+    std::vector<std::string> el_strs;
+    if (get_node()->get_parameter("effort_limits", el_strs))
+      effort_limits_ = parse_semicolon_list(el_strs);
+    else
+      get_node()->get_parameter("effort_limits", effort_limits_);
+  }
   get_node()->get_parameter("default_joint_positions", default_joint_positions_);
+
+  // 读取 joint_modes
+  {
+    std::vector<std::string> mode_strs;
+    if (get_node()->get_parameter("joint_modes", mode_strs)) {
+      joint_modes_.reserve(mode_strs.size());
+      for (const auto & s : mode_strs) {
+        if (s == "position") joint_modes_.push_back(JointMode::Position);
+        else if (s == "velocity") joint_modes_.push_back(JointMode::Velocity);
+        else if (s == "torque") joint_modes_.push_back(JointMode::Torque);
+        else joint_modes_.push_back(JointMode::Position);  // 默认
+      }
+    }
+    if (joint_modes_.size() < joint_names_.size())
+      joint_modes_.resize(joint_names_.size(), JointMode::Position);
+  }
 
   joints_.clear(); //清空堆
   joints_.reserve(joint_names_.size()); //把长度改成和joint_name一样的
@@ -156,10 +211,34 @@ controller_interface::return_type T002Controller::update(
   for (std::size_t i = 0U; i < joints_.size(); ++i) {
     if (!joints_[i]->effort_command_handle.has_value()) continue;
 
-    // 直接透传 desired_position 作为力矩命令 (solover 负责所有 PD 计算)
-    double effort = joints_[i]->desired_position;
-    if (i == 0) effort = 0.0;  // yaw 力矩暂时置 0
+    const auto mode = (i < joint_modes_.size()) ? joint_modes_[i] : JointMode::Position;
+    double effort = 0.0;
+
+    if (mode == JointMode::Torque) {
+      // 力矩模式: 直接透传
+      effort = joints_[i]->desired_position;
+    } else {
+      // 读取实际状态
+      double actual_pos = (joints_[i]->position_handle.has_value())
+        ? joints_[i]->position_handle->get().get_value() : 0.0;
+      double actual_vel = (joints_[i]->velocity_handle.has_value())
+        ? joints_[i]->velocity_handle->get().get_value() : 0.0;
+      double cmd = joints_[i]->desired_position;
+      double kp = (i < pd_kps_.size()) ? pd_kps_[i] : 0.0;
+      double kd = (i < pd_kds_.size()) ? pd_kds_[i] : 0.0;
+
+      if (mode == JointMode::Velocity) {
+        // 速度模式: effort = Kp * (cmd_vel - actual_vel)
+        effort = kp * (cmd - actual_vel);
+      } else {
+        // 位置模式: effort = Kp * (cmd_pos - actual_pos) - Kd * actual_vel
+        effort = kp * (cmd - actual_pos) - kd * actual_vel;
+      }
+    }
+
+    effort = clamp_effort(i, effort);
     joints_[i]->effort_command_handle->get().set_value(effort);
+
   }
   return controller_interface::return_type::OK;
   
@@ -173,8 +252,13 @@ void T002Controller::command_callback(
                 msg->data.size(), joints_.size());
     return;
   }
-  for (std::size_t i = 0U; i < joints_.size(); ++i)
-    joints_[i]->desired_position = sanitize_position(i, msg->data[i]);
+  for (std::size_t i = 0U; i < joints_.size(); ++i) {
+    const auto mode = (i < joint_modes_.size()) ? joint_modes_[i] : JointMode::Position;
+    if (mode == JointMode::Torque)
+      joints_[i]->desired_position = msg->data[i];  // 力矩模式不钳位
+    else
+      joints_[i]->desired_position = sanitize_position(i, msg->data[i]);
+  }
 }
 
 double T002Controller::get_state_value(
