@@ -54,10 +54,10 @@ class TorqueControlNode(Node):
         with suppress_stdout():
             self.model = create_model()
         self.robot = RobotState()
-        self.declare_parameter('kp_pitch', 5.0)
-        self.declare_parameter('kd_pitch', 0.0)
-        self.declare_parameter('kp_roll', 5.0)
-        self.declare_parameter('kd_roll', 0.0)
+        self.declare_parameter('kp_pitch', 2.0)
+        self.declare_parameter('kd_pitch', 0.5)
+        self.declare_parameter('kp_roll', 2.0)
+        self.declare_parameter('kd_roll', 0.5)
         self.declare_parameter('max_joint_torque', 2.0)
         self.declare_parameter('max_motor_torque', 1.5)
         self.declare_parameter('wheel_base', 0.44553)
@@ -126,6 +126,8 @@ class TorqueControlNode(Node):
             steer(vx_c + wz * half, vy_c, self.robot.wheel_right_yaw_joint.pos)
         self.robot.wheel_left_yaw_joint_tar,   self.robot.wheel_left_roll_joint_tar = \
             steer(vx_c - wz * half, vy_c, self.robot.wheel_left_yaw_joint.pos)
+        self.robot.wheel_left_roll_joint_tar = self.robot.wheel_left_roll_joint_tar #这里反一下是为了把坐标系转换到上面
+        self.robot.wheel_right_roll_joint_tar = -self.robot.wheel_right_roll_joint_tar
         self.robot.waist_joint_tar    = self.target_waist
         self.robot.neck_yaw_joint_tar = self.target_neck_yaw
 
@@ -148,6 +150,9 @@ class TorqueControlNode(Node):
             self.robot.neck_roll_joint_tar  = result['theta2_torque']
             self.last_pitch = result['pitch']
             self.last_roll  = result['roll']
+        #这部分在使用gazebo仿真的时候可以用，真机部署要注释
+        self.robot.neck_pitch_joint_tar = self.get_parameter('kp_pitch').value * (self.target_pitch - self.robot.neck_pitch_joint.pos) - self.get_parameter('kd_pitch').value * self.robot.neck_pitch_joint.vel
+        self.robot.neck_roll_joint_tar  = self.get_parameter('kp_roll').value  * (self.target_roll  - self.robot.neck_roll_joint.pos ) - self.get_parameter('kd_roll' ).value * self.robot.neck_roll_joint.vel
         self.chassis_control()
         cmd = Float64MultiArray()
         cmd.data = [self.robot.waist_joint_tar, self.robot.neck_yaw_joint_tar,

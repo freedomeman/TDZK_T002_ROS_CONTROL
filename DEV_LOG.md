@@ -102,3 +102,17 @@ urdfs/T002_description/           ← URDF + 配置文件
 | wheel roll kp | controller.yaml | 1.0 (vel) |
 | neck torque limits | controller.yaml | ±1.5 Nm |
 | max_motor_torque | torque_control_node | 1.5 Nm |
+
+
+
+### 仿真用到的参数
+   joint_limits:
+        - -3.14; 3.14; -3.14; 3.14; -0.35; 0.35; -0.35; 0.35
+        - -6.28; 6.28; -50.0; 50.0; -6.28; 6.28; -50.0; 50.0
+      pd:
+        - 5.0; 0.1; 5.0; 0.1; 0.0; 0.0; 0.0; 0.0
+        - 5.0; 0.1; 1.0; 0.0; 5.0; 0.1; 1.0; 0.0
+      effort_limits:
+        - -5.0; 5.0; -5.0; 5.0; -1.5; 1.5; -1.5; 1.5
+        - -5.0; 5.0; -5.0; 5.0; -5.0; 5.0; -5.0; 5.0
+      default_joint_positions: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

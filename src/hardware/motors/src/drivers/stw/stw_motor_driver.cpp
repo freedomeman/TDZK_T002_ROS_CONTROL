@@ -110,6 +110,9 @@ void StwMotorDriver::motor_mit_cmd(float f_p, float f_v, float f_kp, float f_kd,
   // 摩擦补偿 (在 N·m 空间, 补偿后 clamp)
   f_t += friction_compensation(f_t);
 
+  //电机控制的是Q轴电流所以就把力矩转换为电流 力矩/减速比/转矩常数
+  f_t = f_t/8/0.41;
+
   f_p = std::clamp(f_p, -limit_param_.PosMax, limit_param_.PosMax);
   f_v = std::clamp(f_v, -limit_param_.SpdMax, limit_param_.SpdMax);
   f_kp = std::clamp(f_kp, 0.0F, limit_param_.OKpMax);

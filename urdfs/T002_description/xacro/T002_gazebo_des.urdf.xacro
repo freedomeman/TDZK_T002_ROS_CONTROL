@@ -3,8 +3,7 @@
   <xacro:include filename="$(find t002_description)/xacro/ros2control.xacro"/>
   <xacro:property name="joints_config_file" value="$(find t002_description)/xacro/joints_config.yaml"/>
   <xacro:property name="imu_config_file" value="$(find t002_description)/xacro/imu_config.yaml"/>
-  <xacro:t002_ros2_control name="T002Hardware" hardware_plugin="gz_ros2_control/GazeboSimSystem"
-    joints_config_file="${joints_config_file}" imu_config_file="${imu_config_file}"/>
+  <xacro:t002_ros2_control name="T002Hardware" hardware_plugin="gz_ros2_control/GazeboSimSystem" joints_config_file="${joints_config_file}" imu_config_file="${imu_config_file}"/>
 
   <link name="base_link">
     <inertial>
@@ -50,12 +49,12 @@
       </geometry>
     </collision>
   </link>
-  <joint name="waist_joint" type="revolute">
+  <joint name="waist_joint" type="continuous">
     <origin xyz="-0.160242981103207 -0.245425719745925 0.146317082445813" rpy="0 0 0" />
     <parent link="base_link" />
     <child link="waist_Link" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14" upper="3.14" effort="100" velocity="50" />
+    <limit effort="100" velocity="50" />
   </joint>
   <link name="neck_yaw_Link">
     <inertial>
@@ -166,12 +165,12 @@
       </geometry>
     </collision>
   </link>
-  <joint name="wheel_left_yaw_joint" type="revolute">
+  <joint name="wheel_left_yaw_joint" type="continuous">
     <origin xyz="-0.32024 -0.40043 0.097317" rpy="-3.1416 0 3.1416" />
     <parent link="base_link" />
     <child link="wheel_left_yaw_Link" />
     <axis xyz="0 0 -1" />
-    <limit lower="-3.14" upper="3.14" effort="100" velocity="50" />
+    <limit effort="100" velocity="50" />
   </joint>
   <link name="wheel_left_roll_Link">
     <inertial>
@@ -195,12 +194,12 @@
       </geometry>
     </collision>
   </link>
-  <joint name="wheel_left_roll_joint" type="revolute">
+  <joint name="wheel_left_roll_joint" type="continuous">
     <origin xyz="-0.00136589935180897 0.00429095489768716 0.12851606406394" rpy="1.5707963267949 0.00659792478876605 0.785398163397464" />
     <parent link="wheel_left_yaw_Link" />
     <child link="wheel_left_roll_Link" />
     <axis xyz="0 0 -1" />
-    <limit lower="-3.14" upper="3.14" effort="100" velocity="50" />
+    <limit effort="100" velocity="50" />
   </joint>
   <link name="wheel_right_yaw_Link">
     <inertial>
@@ -224,12 +223,12 @@
       </geometry>
     </collision>
   </link>
-  <joint name="wheel_right_yaw_joint" type="revolute">
+  <joint name="wheel_right_yaw_joint" type="continuous">
     <origin xyz="-0.000242981103206271 -0.0904257197459303 0.0973170824458125" rpy="-3.14159265358979 0 3.14159265358979" />
     <parent link="base_link" />
     <child link="wheel_right_yaw_Link" />
     <axis xyz="0 0 -1" />
-    <limit lower="-3.14" upper="3.14" effort="100" velocity="50" />
+    <limit effort="100" velocity="50" />
   </joint>
   <link name="wheel_right_roll_Link">
     <inertial>
@@ -253,14 +252,13 @@
       </geometry>
     </collision>
   </link>
-  <joint name="wheel_right_roll_joint" type="revolute">
+  <joint name="wheel_right_roll_joint" type="continuous">
     <origin xyz="-0.00136589935180871 0.00429095489768724 0.12851606406394" rpy="1.5707963267949 0.00659792478876655 0.785398163397398" />
     <parent link="wheel_right_yaw_Link" />
     <child link="wheel_right_roll_Link" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14" upper="3.14" effort="100" velocity="50" />
+    <limit effort="100" velocity="50" />
   </joint>
-
 
   <gazebo>
     <plugin filename="libgz_ros2_control-system.so" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
