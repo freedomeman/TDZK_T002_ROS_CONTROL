@@ -103,7 +103,7 @@ private:
     // 底盘: 右摇杆 (ch3→vx, ch2→vy), ch0→wz
     vx_target_ = axis_raw(3) * 10.0;
     vy_target_ = axis_raw(2) * 10.0;
-    wz_target_ = axis_raw(0) * 3.0;
+    wz_target_ = axis_raw(0) * 24.0;
 
     last_time_ = now;
 

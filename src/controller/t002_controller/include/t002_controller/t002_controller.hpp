@@ -47,6 +47,8 @@ public:
   controller_interface::return_type update(
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
+  static double normalizeAnglePi(double angle);
+
 private:
   void command_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
 
@@ -55,6 +57,7 @@ private:
   double compute_pd_effort(std::size_t idx, const Joint & joint) const;
   double sanitize_position(std::size_t idx, double value) const;
   double clamp_effort(std::size_t idx, double effort) const;
+
 
   std::vector<std::string> joint_names_;
   std::vector<std::string> sensor_names_;

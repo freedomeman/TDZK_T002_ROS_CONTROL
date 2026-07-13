@@ -219,8 +219,8 @@ controller_interface::return_type T002Controller::update(
       effort = joints_[i]->desired_position;
     } else {
       // 读取实际状态
-      double actual_pos = (joints_[i]->position_handle.has_value())
-        ? joints_[i]->position_handle->get().get_value() : 0.0;
+      double actual_pos = normalizeAnglePi((joints_[i]->position_handle.has_value())
+        ? joints_[i]->position_handle->get().get_value() : 0.0);
       double actual_vel = (joints_[i]->velocity_handle.has_value())
         ? joints_[i]->velocity_handle->get().get_value() : 0.0;
       double cmd = joints_[i]->desired_position;
@@ -232,11 +232,12 @@ controller_interface::return_type T002Controller::update(
         effort = kp * (cmd - actual_vel);
       } else {
         // 位置模式: effort = Kp * (cmd_pos - actual_pos) - Kd * actual_vel
-        effort = kp * (cmd - actual_pos) - kd * actual_vel;
+        effort = kp * normalizeAnglePi(cmd - actual_pos) - kd * actual_vel;
       }
     }
 
     effort = clamp_effort(i, effort);
+    // effort = 0.0;
     joints_[i]->effort_command_handle->get().set_value(effort);
 
   }
@@ -267,14 +268,13 @@ double T002Controller::get_state_value(
 
 double T002Controller::compute_pd_effort(std::size_t i, const Joint & j) const
 {
-  const double pos = j.position_handle
-    ? get_state_value(j.position_handle->get()) : 0.0;
+  const double pos = normalizeAnglePi(j.position_handle ? get_state_value(j.position_handle->get()) : 0.0) ;
   const double vel = j.velocity_handle
     ? get_state_value(j.velocity_handle->get()) : 0.0;
   const double kp = i < pd_kps_.size() ? pd_kps_[i] : 0.0;
   const double kd = i < pd_kds_.size() ? pd_kds_[i] : 0.0;
 
-  double e = kp * (j.desired_position - pos) - kd * vel;
+  double e = kp * normalizeAnglePi(j.desired_position - pos) - kd * vel;
   if (!std::isfinite(e)) e = 0.0;
   return clamp_effort(i, e);
 }
@@ -299,6 +299,14 @@ double T002Controller::clamp_effort(std::size_t i, double e) const
     e = std::min(e, effort_limits_[hi]);
   }
   return e;
+}
+
+/**
+ * 将角度归一化到 [-π, π] 区间。
+ * 使用 atan2(sin, cos) 方法，数值稳定。
+ */
+double T002Controller::normalizeAnglePi(double angle) {
+    return std::atan2(std::sin(angle), std::cos(angle));
 }
 
 }  // namespace t002_controller
