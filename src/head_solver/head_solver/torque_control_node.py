@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """全关节控制节点: 脖子力矩解算 + 底盘运动学"""
 import os, sys, math
+import numpy as np
 from contextlib import contextmanager
 from dataclasses import dataclass
 
@@ -208,13 +209,13 @@ class TorqueControlNode(Node):
 
     def target_callback(self, msg):
         if len(msg.data) < 7: return
-        # self.target_waist    = msg.data[0]
-        # self.target_neck_yaw = msg.data[1]
-        # self.target_pitch    = msg.data[2]
-        # self.target_roll     = msg.data[3]
-        # self.target_vx       = msg.data[4]
-        # self.target_vy       = msg.data[5]
-        # self.target_wz       = msg.data[6]
+        self.target_waist    = msg.data[0]
+        self.target_neck_yaw = msg.data[1]
+        self.target_pitch    = msg.data[2]
+        self.target_roll     = msg.data[3]
+        self.target_vx       = msg.data[4]
+        self.target_vy       = msg.data[5]
+        self.target_wz       = msg.data[6]
 
     def face_callback(self, msg: FaceTarget):
         """人脸坐标回调：调用指向解算并打印结果。"""
@@ -245,6 +246,22 @@ class TorqueControlNode(Node):
         # 限位 ±0.3 rad
         roll  = 0.0
         pitch = max(-0.3, min(0.3, pitch))
+
+        # setpoint 限速（防大阶跃超调振荡）
+        max_rate_pitch = 0.8   # rad/s
+        max_rate_yaw   = 1.2   # rad/s
+        dt = 0.03              # face_callback 约 30Hz
+        # pitch
+        err_p = pitch - self.target_pitch
+        step_p = max(-max_rate_pitch * dt, min(max_rate_pitch * dt, err_p))
+        self.target_pitch += step_p
+        # yaw
+        err_y = yaw - self.target_neck_yaw
+        step_y = max(-max_rate_yaw * dt, min(max_rate_yaw * dt, err_y))
+        self.target_neck_yaw += step_y
+        # roll
+        self.target_roll = roll
+
         # error_p = (pitch - self.last_pitch)
         # error_y = (yaw - self.robot.neck_yaw_joint.pos)
 
@@ -259,9 +276,9 @@ class TorqueControlNode(Node):
         #     error_y = error_y/5
         
 
-        self.target_neck_yaw = yaw   #self.target_neck_yaw + error_y
-        self.target_pitch    = pitch #self.target_pitch + error_p
-        self.target_roll     = roll
+        # self.target_neck_yaw = yaw   #self.target_neck_yaw + error_y
+        # self.target_pitch    = pitch #self.target_pitch + error_p
+        # self.target_roll     = roll
         self.get_logger().info(
             f'🎯 人脸指向解算: '
             f'pitch_now={self.last_pitch:.3f} '
@@ -273,27 +290,27 @@ class TorqueControlNode(Node):
             throttle_duration_sec=0.5,
         )
 
-        # ── 写调试日志到文件 ──
-        _debug_log_path = '/home/tuf/Doc/TDZK_T002_ROS_CONTROL/face_pointing_debug.csv'
-        _debug_header = (
-            'time_ms,cur_roll,cur_pitch,neck_yaw,neck_pitch_joint,'
-            'X_cam,Y_cam,Z_cam,X_base,Y_base,Z_base,yaw_tar,pitch_tar\n'
-        )
-        if not hasattr(self, '_debug_fp'):
-            import os
-            first = not os.path.exists(_debug_log_path)
-            self._debug_fp = open(_debug_log_path, 'a')
-            if first:
-                self._debug_fp.write(_debug_header)
-        ts_ms = int(self.get_clock().now().nanoseconds / 1e6)
-        self._debug_fp.write(
-            f'{ts_ms},{self.last_roll:.6f},{self.last_pitch:.6f},'
-            f'{self.robot.neck_yaw_joint.pos:.6f},{self.robot.neck_pitch_joint.pos:.6f},'
-            f'{msg.center.x:.6f},{msg.center.y:.6f},{msg.center.z:.6f},'
-            f'{X_b:.6f},{Y_b:.6f},{Z_b:.6f},'
-            f'{yaw:.6f},{pitch:.6f}\n'
-        )
-        self._debug_fp.flush()
+        # # ── 写调试日志到文件 (face 跟踪) ──
+        # _debug_log_path = '/home/tuf/Doc/TDZK_T002_ROS_CONTROL/face_pointing_debug.csv'
+        # _debug_header = (
+        #     'time_ms,cur_roll,cur_pitch,neck_yaw,neck_pitch_joint,'
+        #     'X_cam,Y_cam,Z_cam,X_base,Y_base,Z_base,yaw_tar,pitch_tar\n'
+        # )
+        # if not hasattr(self, '_debug_fp'):
+        #     import os
+        #     first = not os.path.exists(_debug_log_path)
+        #     self._debug_fp = open(_debug_log_path, 'a')
+        #     if first:
+        #         self._debug_fp.write(_debug_header)
+        # ts_ms = int(self.get_clock().now().nanoseconds / 1e6)
+        # self._debug_fp.write(
+        #     f'{ts_ms},{self.last_roll:.6f},{self.last_pitch:.6f},'
+        #     f'{self.robot.neck_yaw_joint.pos:.6f},{self.robot.neck_pitch_joint.pos:.6f},'
+        #     f'{msg.center.x:.6f},{msg.center.y:.6f},{msg.center.z:.6f},'
+        #     f'{X_b:.6f},{Y_b:.6f},{Z_b:.6f},'
+        #     f'{yaw:.6f},{pitch:.6f}\n'
+        # )
+        # self._debug_fp.flush()
 
     def imu_callback(self, msg: Imu):
         self.robot.imu.ori_w = msg.orientation.w
@@ -398,10 +415,34 @@ class TorqueControlNode(Node):
         # 始终更新当前姿态（即使 FK 不收敛，近似值也可用）
         self.last_pitch = result['pitch']
         self.last_roll  = result['roll']
-        if result['error_state'] == 0:
-            self.robot.neck_pitch_joint_tar = result['theta1_torque']
-            self.robot.neck_roll_joint_tar  = result['theta2_torque']
+
+        # 重力补偿 (始终执行)
+        DEG = math.pi / 180.0
+        r, p = self.last_roll, self.last_pitch
+        comp_p = 0.185 * math.sin(r + 166*DEG) * math.cos(p - 70*DEG)
+        comp_r = 0.071 * math.sin(r - 4*DEG)   * math.cos(p + 156*DEG)
+        joint_comp = np.array([comp_r, comp_p])
+        motor_comp = np.linalg.solve(result['jacobian'].T, joint_comp)
+        self.robot.neck_pitch_joint_tar = motor_comp[0]*0.8   + result['theta1_torque'] #这里参数不一样是因为电机的特性原因
+        self.robot.neck_roll_joint_tar  = motor_comp[1]  + result['theta2_torque']
         # ---- 真机模式结束 ----
+
+        # ── 重力标定数据采集 ──
+        _calib_path = '/home/tuf/Doc/TDZK_T002_ROS_CONTROL/gravity_calib.csv'
+        _calib_header = 'time_ms,target_pitch,target_roll,fk_pitch,fk_roll,tau_pitch,tau_roll\n'
+        if not hasattr(self, '_calib_fp'):
+            import os
+            first = not os.path.exists(_calib_path)
+            self._calib_fp = open(_calib_path, 'a')
+            if first:
+                self._calib_fp.write(_calib_header)
+        ts_ms = int(self.get_clock().now().nanoseconds / 1e6)
+        self._calib_fp.write(
+            f'{ts_ms},{self.target_pitch:.6f},{self.target_roll:.6f},'
+            f'{self.last_pitch:.6f},{self.last_roll:.6f},'
+            f'{result["tau_pitch"]:.6f},{result["tau_roll"]:.6f}\n'
+        )
+        self._calib_fp.flush()
 
         # ---- 仿真模式: 直接 PD ----
         # kp_p = self.get_parameter('kp_pitch').value
@@ -460,3 +501,7 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+
+
+
