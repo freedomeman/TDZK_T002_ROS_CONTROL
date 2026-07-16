@@ -52,7 +52,8 @@ hardware_interface::CallbackReturn RobotHardwareNode::on_init(
       joint.motor_id         = static_cast<uint16_t>(get_required_joint_int_param(joint_info, "motor_id")); // 电机CAN ID
       joint.zero_offset      = get_required_joint_double_param(joint_info, "motor_zero_offset"); // 零点偏移
       joint.direction        = get_required_joint_double_param(joint_info, "direction");        // 力矩方向系数(1或-1)
-
+      joint.estop_kd         = static_cast<float>(
+        get_joint_double_param(joint_info, "estop_kd", 0.0));  // 急停阻尼系数
       // 为状态和命令接口分配存储空间，初始化为 NaN 或 0
       joint.state_values.resize(
         joint_info.state_interfaces.size(), std::numeric_limits<double>::quiet_NaN());
@@ -294,6 +295,29 @@ hardware_interface::CallbackReturn RobotHardwareNode::on_configure(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
+  // 创建急停 topic 订阅 (独立节点 + 独立 executor + 后台 spin 线程)
+  try {
+    estop_node_ = std::make_shared<rclcpp::Node>("robot_hardware_estop");
+    estop_sub_ = estop_node_->create_subscription<std_msgs::msg::Bool>(
+      "~/estop", 10,
+      [this](std_msgs::msg::Bool::SharedPtr msg) {
+        estop_flag_.store(msg->data);
+      });
+    estop_executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+    estop_executor_->add_node(estop_node_);
+    estop_spin_thread_ = std::make_unique<std::thread>(
+      [this]() { estop_executor_->spin(); });
+    RCLCPP_INFO(
+      rclcpp::get_logger("robot_hardware_node"),
+      "急停 topic 订阅已创建: ~/estop");
+  } catch (const std::exception & exception) {
+    RCLCPP_ERROR(
+      rclcpp::get_logger("robot_hardware_node"),
+      "急停订阅创建失败: %s",
+      exception.what());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
   RCLCPP_INFO(
   rclcpp::get_logger("robot_hardware_node"),
   "硬件 驱动层初始化完成 -------------------------------------------------------------");
@@ -355,6 +379,19 @@ hardware_interface::CallbackReturn RobotHardwareNode::on_deactivate(
     }
     joint.active = false;           // 清除激活标志
   }
+
+  // 停止急停订阅和 spin 线程
+  estop_flag_.store(false);
+  if (estop_executor_) {
+    estop_executor_->cancel();
+  }
+  if (estop_spin_thread_ && estop_spin_thread_->joinable()) {
+    estop_spin_thread_->join();
+  }
+  estop_spin_thread_.reset();
+  estop_sub_.reset();
+  estop_node_.reset();
+  estop_executor_.reset();
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -476,11 +513,20 @@ hardware_interface::return_type RobotHardwareNode::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
   try {
+    // 急停标志在主线程读一次，lambda 捕获副本，避免每次循环都 atomic load
+    const bool estop_active = estop_flag_.load();
+
     // 并行处理各总线上的电机命令发送
-    for_each_bus_parallel([this](const BusData & bus) {
+    for_each_bus_parallel([this, estop_active](const BusData & bus) {
       for (const auto joint_index : bus.joint_indices) {
         auto & joint = joints_[joint_index];
         if (!joint.motor || !joint.active) {
+          continue;
+        }
+
+        // 急停优先：使用电机内部 kd 阻尼，替换控制器力矩命令
+        if (estop_active) {
+          joint.motor->estop(joint.estop_kd);
           continue;
         }
 

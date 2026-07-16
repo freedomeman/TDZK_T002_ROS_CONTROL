@@ -34,6 +34,7 @@ PYBIND11_MODULE(motors_py, m) {
              py::arg("pos"), py::arg("spd"), py::arg("ignore_limit") = false)
         .def("motor_spd_cmd", &MotorDriver::motor_spd_cmd)
         .def("motor_mit_cmd", &MotorDriver::motor_mit_cmd)
+        .def("estop", &MotorDriver::estop)
         .def("set_motor_control_mode", &MotorDriver::set_motor_control_mode)
         .def("get_response_count", &MotorDriver::get_response_count)
         .def("refresh_motor_status", &MotorDriver::refresh_motor_status)

@@ -77,6 +77,7 @@ class StwMotorDriver : public MotorDriver {
   void motor_spd_cmd(float spd) override;
   void reset_motor_id() override {}
   void motor_mit_cmd(float f_p, float f_v, float f_kp, float f_kd, float f_t) override;
+  void estop(float kd) override;
   void set_motor_control_mode(uint8_t motor_control_mode) override;
   int get_response_count() const override { return response_count_; }
   void refresh_motor_status() override;

@@ -428,21 +428,21 @@ class TorqueControlNode(Node):
         # ---- 真机模式结束 ----
 
         # ── 重力标定数据采集 ──
-        _calib_path = '/home/tuf/Doc/TDZK_T002_ROS_CONTROL/gravity_calib.csv'
-        _calib_header = 'time_ms,target_pitch,target_roll,fk_pitch,fk_roll,tau_pitch,tau_roll\n'
-        if not hasattr(self, '_calib_fp'):
-            import os
-            first = not os.path.exists(_calib_path)
-            self._calib_fp = open(_calib_path, 'a')
-            if first:
-                self._calib_fp.write(_calib_header)
-        ts_ms = int(self.get_clock().now().nanoseconds / 1e6)
-        self._calib_fp.write(
-            f'{ts_ms},{self.target_pitch:.6f},{self.target_roll:.6f},'
-            f'{self.last_pitch:.6f},{self.last_roll:.6f},'
-            f'{result["tau_pitch"]:.6f},{result["tau_roll"]:.6f}\n'
-        )
-        self._calib_fp.flush()
+        # _calib_path = '/home/tuf/Doc/TDZK_T002_ROS_CONTROL/gravity_calib.csv'
+        # _calib_header = 'time_ms,target_pitch,target_roll,fk_pitch,fk_roll,tau_pitch,tau_roll\n'
+        # if not hasattr(self, '_calib_fp'):
+        #     import os
+        #     first = not os.path.exists(_calib_path)
+        #     self._calib_fp = open(_calib_path, 'a')
+        #     if first:
+        #         self._calib_fp.write(_calib_header)
+        # ts_ms = int(self.get_clock().now().nanoseconds / 1e6)
+        # self._calib_fp.write(
+        #     f'{ts_ms},{self.target_pitch:.6f},{self.target_roll:.6f},'
+        #     f'{self.last_pitch:.6f},{self.last_roll:.6f},'
+        #     f'{result["tau_pitch"]:.6f},{result["tau_roll"]:.6f}\n'
+        # )
+        # self._calib_fp.flush()
 
         # ---- 仿真模式: 直接 PD ----
         # kp_p = self.get_parameter('kp_pitch').value

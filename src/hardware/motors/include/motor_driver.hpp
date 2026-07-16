@@ -124,6 +124,16 @@ class MotorDriver {
     virtual void motor_mit_cmd(float f_p, float f_v, float f_kp, float f_kd, float f_t) = 0;
 
     /**
+     * @brief 急停：使用电机 MIT 模式内部 kd 阻尼，快速减速到零。
+     *
+     * 每个控制周期调用一次，不是一次性命令。
+     * kp=0, torque=0, 目标速度=0，仅靠 kd 产生阻尼力矩。
+     *
+     * @param kd 阻尼系数（各驱动按自身 MIT 参数范围解释）
+     */
+    virtual void estop(float kd) = 0;
+
+    /**
      * @brief Sets the control mode for the motor.
      *
      * This function specifies the control mode for the motor.

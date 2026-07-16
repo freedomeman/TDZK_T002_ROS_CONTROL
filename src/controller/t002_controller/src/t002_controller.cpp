@@ -237,7 +237,7 @@ controller_interface::return_type T002Controller::update(
     }
 
     effort = clamp_effort(i, effort);
-    // effort = 0.0;
+    //effort = 0.0;  // 临时调试: 暂时不输出力矩，避免电机抖动
     joints_[i]->effort_command_handle->get().set_value(effort);
 
   }
@@ -299,6 +299,19 @@ double T002Controller::clamp_effort(std::size_t i, double e) const
     e = std::min(e, effort_limits_[hi]);
   }
   return e;
+}
+
+double T002Controller::vel_to_zero(std::size_t i, const Joint & j)
+{
+  // 获取当前速度（无效则视为0）
+  const double vel = j.velocity_handle.has_value()
+    ? j.velocity_handle->get().get_value() : 0.0;
+
+  // 使用 kd（来自 pd_kds_）作为速度环的比例增益
+  const double kd = i < pd_kds_.size() ? pd_kds_[i] : 0.0;
+
+  // 控制律：期望速度为0，误差 = 0 - vel
+  return kd * (0 - vel);
 }
 
 /**

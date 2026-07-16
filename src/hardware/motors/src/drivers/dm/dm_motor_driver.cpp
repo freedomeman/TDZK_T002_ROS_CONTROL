@@ -4,6 +4,7 @@
 DM_Limit_Param limit_param[Num_Of_Motor] = {
     {12.5, 20, 28, 500, 5},   // DM4340P_48V
     {12.5, 25, 200, 500, 5},  // DM10010L_48V
+    {12.5, 45.0, 10.0, 500, 5},   // DM_G6220
 };
 
 DmMotorDriver::DmMotorDriver(uint16_t motor_id, const std::string& interface_type, const std::string& can_interface, uint16_t master_id_offset,
@@ -155,8 +156,12 @@ void DmMotorDriver::can_rx_cbk(const can_frame& rx_frame) {
         }
     motor_pos_ =
         range_map(pos_int, uint16_t(0), bitmax<uint16_t>(16), -limit_param_.PosMax, limit_param_.PosMax) + motor_zero_offset_;
-    motor_spd_ =
-        range_map(spd_int, uint16_t(0), bitmax<uint16_t>(12), -limit_param_.SpdMax, limit_param_.SpdMax);
+    {
+        float raw_spd =
+            range_map(spd_int, uint16_t(0), bitmax<uint16_t>(12), -limit_param_.SpdMax, limit_param_.SpdMax);
+        constexpr float alpha = 0.3f;  // 低通滤波系数，越小越平滑，0.3 对应截止频率约 12Hz @ 250Hz
+        motor_spd_ = alpha * raw_spd + (1.0f - alpha) * motor_spd_.load();
+    }
     motor_current_ =
         range_map(t_int, uint16_t(0), bitmax<uint16_t>(12), -limit_param_.TauMax, limit_param_.TauMax);
     mos_temperature_ = rx_frame.data[6];
@@ -276,6 +281,13 @@ void DmMotorDriver::motor_mit_cmd(float f_p, float f_v, float f_kp, float f_kd, 
     {
         response_count_++;
     }
+}
+
+void DmMotorDriver::estop(float kd) {
+    // kp=0.05 激活 DM 电机 MIT 回路（kp=0 会被电机视为 MIT 关闭），
+    // p 用当前位置使位置误差≈0，净效果 ≈ -kd*v 纯阻尼
+    //motor_mit_cmd(motor_pos_.load(), 0.0f, 1.0f, kd, 0.0f);
+    motor_mit_cmd(0.0, 0.0f, 0.0f, kd, 0.0f);
 }
 
 void DmMotorDriver::set_motor_control_mode(uint8_t motor_control_mode) {

@@ -200,8 +200,9 @@ void EncosMotorDriver::motor_mit_cmd(float f_p, float f_v, float f_kp, float f_k
     }
 }
 
-
-
+void EncosMotorDriver::estop(float kd) {
+    motor_mit_cmd(0.0f, 0.0f, 0.0f, kd, 0.0f);
+}
 
 void EncosMotorDriver::set_motor_control_mode(uint8_t motor_control_mode) {
     if (motor_control_mode != MIT) {

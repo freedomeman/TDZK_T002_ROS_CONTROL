@@ -11,6 +11,7 @@
       <param name="master_id_offset">${joint.master_id_offset}</param>
       <param name="direction">${joint.direction}</param>
       <param name="motor_zero_offset">${joint.zero_offset}</param>
+      <param name="estop_kd">${joint.estop_kd}</param>
       <command_interface name="effort"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>

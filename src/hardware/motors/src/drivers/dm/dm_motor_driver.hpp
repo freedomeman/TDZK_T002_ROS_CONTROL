@@ -20,6 +20,7 @@ enum DMError {
 enum DM_Motor_Model { 
     DM4340P_48V, 
     DM10010L_48V, 
+    DM_G6220,
     Num_Of_Motor 
 };
 
@@ -96,6 +97,7 @@ class DmMotorDriver : public MotorDriver {
     virtual void motor_pos_cmd(float pos, float spd, bool ignore_limit) override;
     virtual void motor_spd_cmd(float spd) override;
     virtual void motor_mit_cmd(float f_p, float f_v, float f_kp, float f_kd, float f_t) override;
+    virtual void estop(float kd) override;
     virtual void reset_motor_id() override {};
     virtual void set_motor_control_mode(uint8_t motor_control_mode) override;
     virtual int get_response_count() const {

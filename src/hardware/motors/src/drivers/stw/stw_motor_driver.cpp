@@ -150,6 +150,10 @@ void StwMotorDriver::motor_mit_cmd(float f_p, float f_v, float f_kp, float f_kd,
   response_count_++;
 }
 
+void StwMotorDriver::estop(float kd) {
+  motor_mit_cmd(0.0f, 0.0f, 0.0f, kd, 0.0f);
+}
+
 // 摩擦补偿: 根据期望力矩方向和当前转速, 返回补偿力矩 (N·m)
 // 静止: T_comp = Tc * sign(T_des)
 // 运动: T_comp = Tc * sign(w) + Bv * w

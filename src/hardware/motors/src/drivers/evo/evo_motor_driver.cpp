@@ -216,6 +216,10 @@ void EvoMotorDriver::motor_mit_cmd(float f_p, float f_v, float f_kp, float f_kd,
     }
 }
 
+void EvoMotorDriver::estop(float kd) {
+    motor_mit_cmd(0.0f, 0.0f, 0.0f, kd, 0.0f);
+}
+
 void EvoMotorDriver::set_motor_control_mode(uint8_t motor_control_mode) {
     write_register_evo(11, 0x02);
     motor_control_mode_ = motor_control_mode;

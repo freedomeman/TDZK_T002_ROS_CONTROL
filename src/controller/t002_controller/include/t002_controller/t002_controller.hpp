@@ -48,6 +48,7 @@ public:
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
   static double normalizeAnglePi(double angle);
+  double vel_to_zero(std::size_t i, const Joint & j);
 
 private:
   void command_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);

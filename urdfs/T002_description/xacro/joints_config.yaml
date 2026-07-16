@@ -9,16 +9,18 @@ joints:
     master_id_offset: 1
     direction: 1.0
     zero_offset: 0.0
+    estop_kd: 0.0
 
   - name: neck_yaw_joint
     motor_id: 3
     interface: can0
     interface_type: can
     motor_type: DM
-    motor_model: 0
+    motor_model: 2
     master_id_offset: 1
     direction: 1.0
     zero_offset: 0.0
+    estop_kd: 0.1
 
   - name: neck_pitch_joint
     motor_id: 1
@@ -29,6 +31,7 @@ joints:
     master_id_offset: 0
     direction: 1.0
     zero_offset: 0.0
+    estop_kd: 0.1
 
   - name: neck_roll_joint
     motor_id: 2
@@ -39,6 +42,7 @@ joints:
     master_id_offset: 0
     direction: 1.0
     zero_offset: 0.0
+    estop_kd: 0.1
 
   - name: wheel_left_yaw_joint
     motor_id: 5
@@ -49,6 +53,7 @@ joints:
     master_id_offset: 1
     direction: 1.0
     zero_offset: 0.0
+    estop_kd: 0.0
 
   - name: wheel_left_roll_joint
     motor_id: 6
@@ -59,6 +64,7 @@ joints:
     master_id_offset: 1
     direction: 1.0
     zero_offset: 0.0
+    estop_kd: 0.0
 
   - name: wheel_right_yaw_joint
     motor_id: 7
@@ -69,6 +75,7 @@ joints:
     master_id_offset: 1
     direction: 1.0
     zero_offset: 0.0
+    estop_kd: 0.0
 
   - name: wheel_right_roll_joint
     motor_id: 8
@@ -79,3 +86,4 @@ joints:
     master_id_offset: 1
     direction: 1.0
     zero_offset: 0.0
+    estop_kd: 0.0

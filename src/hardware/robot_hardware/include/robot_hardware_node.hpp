@@ -1,10 +1,12 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -15,7 +17,9 @@
 #include "imu_driver.hpp"
 #include "motor_driver.hpp"
 #include "rclcpp/time.hpp"
+#include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/state.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "thread_pool.hpp"
 
 namespace robot_hardware
@@ -60,6 +64,7 @@ private:
     uint16_t motor_id{0};
     double zero_offset{0.0};
     double direction{1.0};
+    float estop_kd{0.0f};
     bool active{false};
     std::shared_ptr<MotorDriver> motor;
     std::vector<double> state_values;
@@ -159,6 +164,13 @@ private:
   std::unique_ptr<ThreadPool> bus_thread_pool_;
   std::vector<std::function<void()>> bus_tasks_;
   std::vector<SensorData> sensors_;
+
+  // 急停
+  std::atomic<bool> estop_flag_{false};
+  rclcpp::Node::SharedPtr estop_node_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr estop_sub_;
+  rclcpp::executors::SingleThreadedExecutor::SharedPtr estop_executor_;
+  std::unique_ptr<std::thread> estop_spin_thread_;
 };
 
 }  // namespace robot_hardware
