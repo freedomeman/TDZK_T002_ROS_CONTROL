@@ -11,6 +11,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from std_msgs.msg import Float64MultiArray
 from sensor_msgs.msg import JointState, Imu
 from face_msgs.msg import FaceTarget
+from geometry_msgs.msg import Vector3Stamped
 
 
 # ============================================================
@@ -198,9 +199,13 @@ class TorqueControlNode(Node):
             JointState, '/joint_states', self.joint_callback,
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST))
         self.sub_target = self.create_subscription(Float64MultiArray, '/target_pose', self.target_callback, 10)
+        # self.sub_imu = self.create_subscription(
+        #     Imu, '/imu', self.imu_callback,
+        #     QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST))
         self.sub_imu = self.create_subscription(
-            Imu, '/imu', self.imu_callback,
-            QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST))
+            Vector3Stamped, '/imu/rpy', self.imu_callback,
+            QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST)
+        )
         self.sub_face = self.create_subscription(
             FaceTarget, '/face/target', self.face_callback,
             QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST))
@@ -312,41 +317,48 @@ class TorqueControlNode(Node):
         # )
         # self._debug_fp.flush()
 
-    def imu_callback(self, msg: Imu):
-        self.robot.imu.ori_w = msg.orientation.w
-        self.robot.imu.ori_x = msg.orientation.x
-        self.robot.imu.ori_y = msg.orientation.y
-        self.robot.imu.ori_z = msg.orientation.z
-        self.robot.imu.ang_vel_x = msg.angular_velocity.x
-        self.robot.imu.ang_vel_y = msg.angular_velocity.y
-        self.robot.imu.ang_vel_z = msg.angular_velocity.z
-        self.robot.imu.lin_acc_x = msg.linear_acceleration.x
-        self.robot.imu.lin_acc_y = msg.linear_acceleration.y
-        self.robot.imu.lin_acc_z = msg.linear_acceleration.z
+    def imu_callback(self, msg: Vector3Stamped):
+        # self.robot.imu.ori_w = msg.orientation.w
+        # self.robot.imu.ori_x = msg.orientation.x
+        # self.robot.imu.ori_y = msg.orientation.y
+        # self.robot.imu.ori_z = msg.orientation.z
+        # self.robot.imu.ang_vel_x = msg.angular_velocity.x
+        # self.robot.imu.ang_vel_y = msg.angular_velocity.y
+        # self.robot.imu.ang_vel_z = msg.angular_velocity.z
+        # self.robot.imu.lin_acc_x = msg.linear_acceleration.x
+        # self.robot.imu.lin_acc_y = msg.linear_acceleration.y
+        # self.robot.imu.lin_acc_z = msg.linear_acceleration.z
 
-        w, x, y, z = self.robot.imu.ori_w, self.robot.imu.ori_x, self.robot.imu.ori_y, self.robot.imu.ori_z
+        # w, x, y, z = self.robot.imu.ori_w, self.robot.imu.ori_x, self.robot.imu.ori_y, self.robot.imu.ori_z
 
-        # roll
-        sinr_cosp = 2.0 * (w * x + y * z)
-        cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
-        roll = math.atan2(sinr_cosp, cosr_cosp)
+        # # roll
+        # sinr_cosp = 2.0 * (w * x + y * z)
+        # cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
+        # roll = math.atan2(sinr_cosp, cosr_cosp)
 
-        # pitch
-        sinp = 2.0 * (w * y - z * x)
-        if abs(sinp) >= 1:
-            pitch = math.copysign(math.pi / 2.0, sinp)
-        else:
-            pitch = math.asin(sinp)
+        # # pitch
+        # sinp = 2.0 * (w * y - z * x)
+        # if abs(sinp) >= 1:
+        #     pitch = math.copysign(math.pi / 2.0, sinp)
+        # else:
+        #     pitch = math.asin(sinp)
 
-        # yaw
-        siny_cosp = 2.0 * (w * z + x * y)
-        cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
-        yaw = math.atan2(siny_cosp, cosy_cosp)
+        # # yaw
+        # siny_cosp = 2.0 * (w * z + x * y)
+        # cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+        # yaw = math.atan2(siny_cosp, cosy_cosp)
 
-        # 3. 赋值到 robot.imu
-        self.robot.imu.roll  = roll
-        self.robot.imu.pitch = pitch
-        self.robot.imu.yaw   = yaw
+        # # 3. 赋值到 robot.imu
+        # self.robot.imu.roll  = roll
+        # self.robot.imu.pitch = pitch
+        # self.robot.imu.yaw   = yaw
+        self.robot.imu.roll  = msg.vector.x
+        self.robot.imu.pitch = msg.vector.y
+        self.robot.imu.yaw   = msg.vector.z
+
+        self.target_neck_yaw = self.robot.imu.yaw
+        self.target_pitch    = self.robot.imu.pitch
+        self.target_roll     = self.robot.imu.roll
 
         # self.get_logger().info(
         # f'IMU: roll={self.robot.imu.roll:.3f} pitch={self.robot.imu.pitch:.3f} yaw={self.robot.imu.yaw:.3f} rad',

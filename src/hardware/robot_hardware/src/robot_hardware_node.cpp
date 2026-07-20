@@ -53,6 +53,7 @@ hardware_interface::CallbackReturn RobotHardwareNode::on_init(
       joint.zero_offset      = get_required_joint_double_param(joint_info, "motor_zero_offset"); // 零点偏移
       joint.direction        = get_required_joint_double_param(joint_info, "direction");        // 力矩方向系数(1或-1)
       joint.estop_kd         = static_cast<float>(get_joint_double_param(joint_info, "estop_kd", 0.0));  // 急停阻尼系数
+      joint.mit_kd   = static_cast<float>(get_joint_double_param(joint_info, "mit_kd", 0.0));   //
       // 为状态和命令接口分配存储空间，初始化为 NaN 或 0
       joint.state_values.resize(
         joint_info.state_interfaces.size(), std::numeric_limits<double>::quiet_NaN());
@@ -542,13 +543,14 @@ hardware_interface::return_type RobotHardwareNode::write(
         // 将力矩限制在 [-1.0, 1.0] 范围内 (假设力矩归一化)
         //const double torque = std::clamp(torque_command, -1.0, 1.0);
 
-        // MIT 模式命令: 期望位置0, 期望速度0, 前馈力矩为计算出的torque
+        // MIT 模式命令: 期望位置0, 期望速度0, 前馈力矩为计算出的 torque
         joint.motor->motor_mit_cmd(
-          0.0F,
-          0.0F,
-          0.0F,
-          0.0F,
-          static_cast<float>(torque_command));
+            0.0F,                       // 期望位置
+            0.0F,                       // 期望速度
+            0.0F,                       // 前馈力矩（kp部分，此处为0）
+            joint.mit_kd,               // 阻尼系数（从配置读取，已赋值给每个关节）
+            static_cast<float>(torque_command)  // 力矩命令
+        );
       }
     });
   } catch (const std::exception & exception) {

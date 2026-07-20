@@ -65,6 +65,7 @@ private:
     double zero_offset{0.0};
     double direction{1.0};
     float estop_kd{0.0f};
+    float mit_kd{0.0f}; 
     bool active{false};
     std::shared_ptr<MotorDriver> motor;
     std::vector<double> state_values;
