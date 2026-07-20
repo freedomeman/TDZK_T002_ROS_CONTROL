@@ -52,8 +52,7 @@ hardware_interface::CallbackReturn RobotHardwareNode::on_init(
       joint.motor_id         = static_cast<uint16_t>(get_required_joint_int_param(joint_info, "motor_id")); // 电机CAN ID
       joint.zero_offset      = get_required_joint_double_param(joint_info, "motor_zero_offset"); // 零点偏移
       joint.direction        = get_required_joint_double_param(joint_info, "direction");        // 力矩方向系数(1或-1)
-      joint.estop_kd         = static_cast<float>(
-        get_joint_double_param(joint_info, "estop_kd", 0.0));  // 急停阻尼系数
+      joint.estop_kd         = static_cast<float>(get_joint_double_param(joint_info, "estop_kd", 0.0));  // 急停阻尼系数
       // 为状态和命令接口分配存储空间，初始化为 NaN 或 0
       joint.state_values.resize(
         joint_info.state_interfaces.size(), std::numeric_limits<double>::quiet_NaN());
@@ -421,7 +420,7 @@ hardware_interface::return_type RobotHardwareNode::read(
         if (joint.has_velocity_state && joint.velocity_state_index < joint.state_values.size()) {
           joint.state_values[joint.velocity_state_index] = joint.motor->get_motor_spd();
         }
-        joint.motor->refresh_motor_status();  // STW: 周期查询0xA3角度
+        joint.motor->refresh_motor_status();  // STW: 周期查询0xA3角度 //？
       }
     });
 

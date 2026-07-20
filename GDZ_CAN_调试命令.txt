@@ -94,3 +94,8 @@ cansend can0 0FF#B1          # 公共地址归零所有电机
 # 例: 查95.5的16进制表示
 # python3 -c "import struct; print(struct.pack('<f',95.5).hex())"
 # 输出: 0000bf42   →  cansend 中用 00.00.BF.42
+
+
+
+
+#我认为方案1是最好的，但是我需要把电机使用到mit模式，我认为这个过程需要改动hardware中的1.改init函数里面的参数增加给电机使用的kp和kd参数，2.改电机的控制函数，有些电机需要力矩控制有些电机需要mit控制有些还可以pos和el控制，所以还有改write函数内部实现，然后在controller中还要改mit类型的需要传位置速度力矩过来（这里不考虑算了），我需要把位置直接发出去透传。所以改动工程量不小。我现在有一个方案，就是给init中增加参数（mit_kp,mit_kd）然后在hardware中有on_config函数在初始化电机，我们把这个kp和kd拆传送给电机，然后在电机的驱动函数中给hardware保留的调用驱动函数只有一个就是motorcmd（tar），然后根据在on_config中设置的电机驱动模式调用对应的函数

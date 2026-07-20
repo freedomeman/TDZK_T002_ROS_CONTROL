@@ -159,7 +159,7 @@ void DmMotorDriver::can_rx_cbk(const can_frame& rx_frame) {
     {
         float raw_spd =
             range_map(spd_int, uint16_t(0), bitmax<uint16_t>(12), -limit_param_.SpdMax, limit_param_.SpdMax);
-        constexpr float alpha = 0.3f;  // 低通滤波系数，越小越平滑，0.3 对应截止频率约 12Hz @ 250Hz
+        constexpr float alpha = 0.6f;  // 低通滤波系数，越小越平滑，0.3 对应截止频率约 12Hz @ 250Hz
         motor_spd_ = alpha * raw_spd + (1.0f - alpha) * motor_spd_.load();
     }
     motor_current_ =

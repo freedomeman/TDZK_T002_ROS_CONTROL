@@ -237,7 +237,7 @@ controller_interface::return_type T002Controller::update(
     }
 
     effort = clamp_effort(i, effort);
-    //effort = 0.0;  // 临时调试: 暂时不输出力矩，避免电机抖动
+    // effort = 0.0;  // 临时调试: 暂时不输出力矩，避免电机抖动
     joints_[i]->effort_command_handle->get().set_value(effort);
 
   }

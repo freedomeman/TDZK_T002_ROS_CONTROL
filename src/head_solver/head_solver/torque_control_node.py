@@ -209,13 +209,13 @@ class TorqueControlNode(Node):
 
     def target_callback(self, msg):
         if len(msg.data) < 7: return
-        self.target_waist    = msg.data[0]
-        self.target_neck_yaw = msg.data[1]
-        self.target_pitch    = msg.data[2]
-        self.target_roll     = msg.data[3]
-        self.target_vx       = msg.data[4]
-        self.target_vy       = msg.data[5]
-        self.target_wz       = msg.data[6]
+        # self.target_waist    = msg.data[0]
+        # self.target_neck_yaw = msg.data[1]
+        # self.target_pitch    = msg.data[2]
+        # self.target_roll     = msg.data[3]
+        # self.target_vx       = msg.data[4]
+        # self.target_vy       = msg.data[5]
+        # self.target_wz       = msg.data[6]
 
     def face_callback(self, msg: FaceTarget):
         """人脸坐标回调：调用指向解算并打印结果。"""

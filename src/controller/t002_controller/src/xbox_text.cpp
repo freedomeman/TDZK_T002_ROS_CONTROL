@@ -12,6 +12,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
+#include "std_msgs/msg/bool.hpp"
 
 class XboxText : public rclcpp::Node
 {
@@ -45,6 +46,7 @@ public:
     buttons_.resize(button_count, 0);
 
     pub_pose_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/target_pose", 10);
+    pub_estop_ = this->create_publisher<std_msgs::msg::Bool>("/robot_hardware_estop/estop", 10);
 
     const auto period = std::chrono::duration<double>(1.0 / publish_rate);
     timer_ = this->create_wall_timer(period, std::bind(&XboxText::timer_callback, this));
@@ -75,7 +77,18 @@ private:
           if (ev.number < axes_.size()) { axes_[ev.number] = ev.value; }
           break;
         case JS_EVENT_BUTTON:
-          if (ev.number < buttons_.size()) { buttons_[ev.number] = ev.value; }
+          if (ev.number < buttons_.size()) {
+            // 按钮 0 (A键)：上升沿切换急停
+            if (ev.number == 0 && ev.value == 1) {
+              estop_active_ = !estop_active_;
+              auto msg = std_msgs::msg::Bool();
+              msg.data = estop_active_;
+              pub_estop_->publish(msg);
+              RCLCPP_INFO(this->get_logger(),
+                "ESTOP %s", estop_active_ ? "ACTIVE" : "RELEASED");
+            }
+            buttons_[ev.number] = ev.value;
+          }
           break;
       }
     }
@@ -168,6 +181,8 @@ private:
   std::vector<int16_t> buttons_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_pose_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pub_estop_;
+  bool estop_active_{false};
 };
 
 int main(int argc, char * argv[])
