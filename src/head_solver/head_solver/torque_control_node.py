@@ -13,6 +13,8 @@ from sensor_msgs.msg import JointState, Imu
 from face_msgs.msg import FaceTarget
 from geometry_msgs.msg import Vector3Stamped
 
+from collections import deque
+
 
 # ============================================================
 # 云台指向解算（纯数学函数，无 ROS 依赖）
@@ -192,9 +194,14 @@ class TorqueControlNode(Node):
         self.target_wz       = 0.0
         self.last_pitch = 0.0
         self.last_roll  = 0.0
+        # self.window_size = 5          # 窗口大小，建议 3~7，此处用 5
+        # self.win_x = deque(maxlen=self.window_size)
+        # self.win_y = deque(maxlen=self.window_size)
+        # self.win_z = deque(maxlen=self.window_size)
         self.filt_x = None  # 相机坐标 EMA 滤波状态
         self.filt_y = None
         self.filt_z = None
+        self.alpha = 0.25
         self.sub_joints = self.create_subscription(
             JointState, '/joint_states', self.joint_callback,
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST))
@@ -228,15 +235,33 @@ class TorqueControlNode(Node):
             return
 
         # EMA 滤波相机坐标（alpha=0.4，滤除头部运动时的测量噪声）
-        alpha = 0.4
         if self.filt_x is None:
             self.filt_x = msg.center.x
             self.filt_y = msg.center.y
             self.filt_z = msg.center.z
         else:
-            self.filt_x = alpha * msg.center.x + (1 - alpha) * self.filt_x
-            self.filt_y = alpha * msg.center.y + (1 - alpha) * self.filt_y
-            self.filt_z = alpha * msg.center.z + (1 - alpha) * self.filt_z
+            self.filt_x = self.alpha * msg.center.x + (1 - self.alpha) * self.filt_x
+            self.filt_y = self.alpha * msg.center.y + (1 - self.alpha) * self.filt_y
+            self.filt_z = self.alpha * msg.center.z + (1 - self.alpha) * self.filt_z
+
+        # self.win_x.append(msg.center.x)
+        # self.win_y.append(msg.center.y)
+        # self.win_z.append(msg.center.z)
+
+        # if len(self.win_x) < self.window_size:
+        #     med_x, med_y, med_z = msg.center.x, msg.center.y, msg.center.z
+        # else:
+        #     sx, sy, sz = sorted(self.win_x), sorted(self.win_y), sorted(self.win_z)
+        #     mid = self.window_size // 2
+        #     med_x, med_y, med_z = sx[mid], sy[mid], sz[mid]
+
+        # if self.filt_x is None:
+        #     self.filt_x, self.filt_y, self.filt_z = med_x, med_y, med_z
+        # else:
+        #     a = self.alpha
+        #     self.filt_x = a * med_x + (1 - a) * self.filt_x
+        #     self.filt_y = a * med_y + (1 - a) * self.filt_y
+        #     self.filt_z = a * med_z + (1 - a) * self.filt_z
 
         point_cam = [self.filt_x, self.filt_y, self.filt_z]
         # 注意: self.last_pitch 正=抬头(用户约定), 函数内正=低头(FK约定), 需取反
@@ -253,8 +278,8 @@ class TorqueControlNode(Node):
         pitch = max(-0.3, min(0.3, pitch))
 
         # setpoint 限速（防大阶跃超调振荡）
-        max_rate_pitch = 0.8   # rad/s
-        max_rate_yaw   = 1.2   # rad/s
+        max_rate_pitch = 1.4   # rad/s
+        max_rate_yaw   = 1.5   # rad/s
         dt = 0.03              # face_callback 约 30Hz
         # pitch
         err_p = pitch - self.target_pitch
@@ -284,16 +309,16 @@ class TorqueControlNode(Node):
         # self.target_neck_yaw = yaw   #self.target_neck_yaw + error_y
         # self.target_pitch    = pitch #self.target_pitch + error_p
         # self.target_roll     = roll
-        self.get_logger().info(
-            f'🎯 人脸指向解算: '
-            f'pitch_now={self.last_pitch:.3f} '
-            f'roll_now={self.last_roll:.3f} '
-            f'yaw_tar={yaw:.3f} '
-            f'pitch_tar={pitch:.3f} rad '
-            f'P_base=({X_b:.3f},{Y_b:.3f},{Z_b:.3f}) '
-            f'P_cam=({msg.center.x:.3f},{msg.center.y:.3f},{msg.center.z:.3f})',
-            throttle_duration_sec=0.5,
-        )
+        # self.get_logger().info(
+        #     f'🎯 人脸指向解算: '
+        #     f'pitch_now={self.last_pitch:.3f} '
+        #     f'roll_now={self.last_roll:.3f} '
+        #     f'yaw_tar={yaw:.3f} '
+        #     f'pitch_tar={pitch:.3f} rad '
+        #     f'P_base=({X_b:.3f},{Y_b:.3f},{Z_b:.3f}) '
+        #     f'P_cam=({msg.center.x:.3f},{msg.center.y:.3f},{msg.center.z:.3f})',
+        #     throttle_duration_sec=0.5,
+        # )
 
         # # ── 写调试日志到文件 (face 跟踪) ──
         # _debug_log_path = '/home/tuf/Doc/TDZK_T002_ROS_CONTROL/face_pointing_debug.csv'
@@ -314,6 +339,20 @@ class TorqueControlNode(Node):
         #     f'{msg.center.x:.6f},{msg.center.y:.6f},{msg.center.z:.6f},'
         #     f'{X_b:.6f},{Y_b:.6f},{Z_b:.6f},'
         #     f'{yaw:.6f},{pitch:.6f}\n'
+        # )
+        # self._debug_fp.flush()
+        # _debug_log_path = '/home/tuf/Doc/TDZK_T002_ROS_CONTROL/face_raw_data.csv'
+        # _debug_header = 'time_ms,has_target,X_cam,Y_cam,Z_cam\n'
+        # if not hasattr(self, '_debug_fp'):
+        #     import os
+        #     first = not os.path.exists(_debug_log_path)
+        #     self._debug_fp = open(_debug_log_path, 'a')
+        #     if first:
+        #         self._debug_fp.write(_debug_header)
+        # ts_ms = int(self.get_clock().now().nanoseconds / 1e6)
+        # self._debug_fp.write(
+        #     f'{ts_ms},{int(msg.has_target)},'
+        #     f'{msg.center.x:.6f},{msg.center.y:.6f},{msg.center.z:.6f}\n'
         # )
         # self._debug_fp.flush()
 

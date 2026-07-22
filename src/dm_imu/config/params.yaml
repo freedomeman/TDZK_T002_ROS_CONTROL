@@ -5,9 +5,9 @@ dm_imu:
     frame_id: imu_link
 
     # 三个话题的发布开关
-    publish_imu_data: true   # 关掉就设 false
+    publish_imu_data: false   # 关掉就设 false
     publish_rpy: true
-    publish_pose: true
+    publish_pose: false
 
     # RPY 的单位（true=度，false=弧度）
     publish_rpy_in_degree: false
