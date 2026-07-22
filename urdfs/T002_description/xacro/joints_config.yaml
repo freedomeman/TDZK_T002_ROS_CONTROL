@@ -22,7 +22,7 @@ joints:
     direction: 1.0
     zero_offset: 0.0
     estop_kd: 0.1
-    mit_kd: 0.05
+    mit_kd: 0.08
 
   - name: neck_pitch_joint
     motor_id: 1

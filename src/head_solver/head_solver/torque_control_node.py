@@ -14,11 +14,96 @@ from face_msgs.msg import FaceTarget
 from geometry_msgs.msg import Vector3Stamped
 
 from collections import deque
+# ============================================================
+# KF 人脸跟踪器 + 状态机
+# ============================================================
+class FaceTrackerKF:
+    """6维 KF: [x, y, z, vx, vy, vz], 观测 [x, y, z]"""
+    def __init__(self, accel_var=2.0):
+        self.kf = _make_6d_kf()
+        self.state = 'LOST'
+        self.detect_count = 0
+        self.lost_count = 0
+        self.DETECT_THRESH = 5
+        self.TEMP_LOST_MAX = 15
+        self.last_t = None
+        self._filtered = np.zeros(3)
+        self.accel_var = accel_var
+        self.dist = 0.5
+
+    def _set_dynamic_Q(self, dt):
+        v = self.accel_var
+        a = dt**4 / 4.0
+        b = dt**3 / 2.0
+        c = dt**2
+        qp, qc, qv = a * v, b * v, c * v
+        self.kf.Q = np.array([
+            [qp, qc, 0,  0,  0,  0],
+            [qc, qv, 0,  0,  0,  0],
+            [0,  0,  qp, qc, 0,  0],
+            [0,  0,  qc, qv, 0,  0],
+            [0,  0,  0,  0,  qp, qc],
+            [0,  0,  0,  0,  qc, qv],
+        ])
+
+    def update(self, face_msg, t_sec: float):
+        dt = 0.033
+        if self.last_t is not None:
+            dt = max(0.001, min(0.1, t_sec - self.last_t))
+        self.last_t = t_sec
+        self.kf.F[0,3] = self.kf.F[1,4] = self.kf.F[2,5] = dt
+        self._set_dynamic_Q(dt)
+
+        found = (face_msg is not None and getattr(face_msg, 'has_target', False))
+
+        if found:
+            z = np.array([face_msg.center.x, face_msg.center.y, face_msg.center.z])
+            if self.state == 'LOST':
+                self.kf.x[:3, 0] = z
+                self.kf.x[3:, 0] = 0.0
+            self.kf.predict()
+            self.kf.update(z)
+        else:
+            self.kf.predict()
+
+        self._filtered = self.kf.x[:3].copy()
+        self.dist = max(0.3, float(np.linalg.norm(self._filtered)))
+
+        r_scale = (self.dist / 0.5) ** 1.5
+        self.kf.R = np.diag([0.003 * r_scale] * 3)
+        self._state_machine(found)
+
+        if self.state in ('DETECTING', 'TRACKING', 'TEMP_LOST'):
+            return (True, self._filtered)
+        return (False, None)
+
+    def _state_machine(self, found):
+        if self.state == 'LOST':
+            if found: self.state = 'DETECTING'; self.detect_count = 1
+        elif self.state == 'DETECTING':
+            if found:
+                self.detect_count += 1
+                if self.detect_count >= self.DETECT_THRESH: self.state = 'TRACKING'
+            else: self.state = 'LOST'
+        elif self.state == 'TRACKING':
+            if not found: self.state = 'TEMP_LOST'; self.lost_count = 1
+        elif self.state == 'TEMP_LOST':
+            if found: self.state = 'TRACKING'
+            else:
+                self.lost_count += 1
+                if self.lost_count > self.TEMP_LOST_MAX: self.state = 'LOST'
 
 
-# ============================================================
-# 云台指向解算（纯数学函数，无 ROS 依赖）
-# ============================================================
+def _make_6d_kf():
+    from filterpy.kalman import KalmanFilter
+    kf = KalmanFilter(dim_x=6, dim_z=3)
+    kf.F = np.eye(6)
+    kf.H = np.array([[1,0,0,0,0,0],[0,1,0,0,0,0],[0,0,1,0,0,0]])
+    kf.R = np.diag([0.003, 0.003, 0.003])
+    kf.P = np.eye(6) * 10.0
+    return kf
+
+
 def calculate_target_angles(point_cam, current_roll, current_yaw, current_pitch):
     """三轴云台（Roll / Yaw / Pitch）高精度指向解算。
 
@@ -198,10 +283,7 @@ class TorqueControlNode(Node):
         # self.win_x = deque(maxlen=self.window_size)
         # self.win_y = deque(maxlen=self.window_size)
         # self.win_z = deque(maxlen=self.window_size)
-        self.filt_x = None  # 相机坐标 EMA 滤波状态
-        self.filt_y = None
-        self.filt_z = None
-        self.alpha = 0.25
+        self.face_tracker = FaceTrackerKF()  # KF + 状态机
         self.sub_joints = self.create_subscription(
             JointState, '/joint_states', self.joint_callback,
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST))
@@ -230,19 +312,14 @@ class TorqueControlNode(Node):
         # self.target_wz       = msg.data[6]
 
     def face_callback(self, msg: FaceTarget):
-        """人脸坐标回调：调用指向解算并打印结果。"""
-        if not msg.has_target:
+        """KF 跟踪 + 状态机 -> 指向解算"""
+        t_sec = self.get_clock().now().nanoseconds / 1e9
+        tracking, xyz = self.face_tracker.update(msg, t_sec)
+
+        if not tracking:
             return
 
-        # EMA 滤波相机坐标（alpha=0.4，滤除头部运动时的测量噪声）
-        if self.filt_x is None:
-            self.filt_x = msg.center.x
-            self.filt_y = msg.center.y
-            self.filt_z = msg.center.z
-        else:
-            self.filt_x = self.alpha * msg.center.x + (1 - self.alpha) * self.filt_x
-            self.filt_y = self.alpha * msg.center.y + (1 - self.alpha) * self.filt_y
-            self.filt_z = self.alpha * msg.center.z + (1 - self.alpha) * self.filt_z
+        point_cam = [float(xyz[0]), float(xyz[1]), float(xyz[2])]
 
         # self.win_x.append(msg.center.x)
         # self.win_y.append(msg.center.y)
@@ -263,7 +340,7 @@ class TorqueControlNode(Node):
         #     self.filt_y = a * med_y + (1 - a) * self.filt_y
         #     self.filt_z = a * med_z + (1 - a) * self.filt_z
 
-        point_cam = [self.filt_x, self.filt_y, self.filt_z]
+
         # 注意: self.last_pitch 正=抬头(用户约定), 函数内正=低头(FK约定), 需取反
         roll, yaw, pitch_fk, (X_b, Y_b, Z_b) = calculate_target_angles(
             point_cam,
@@ -271,26 +348,46 @@ class TorqueControlNode(Node):
             self.robot.neck_yaw_joint.pos,
             -self.last_pitch,
         )
-        pitch = -pitch_fk  # 转回用户约定: 正=抬头
-
-        # 限位 ±0.3 rad
-        roll  = 0.0
+        pitch = -pitch_fk
         pitch = max(-0.3, min(0.3, pitch))
 
-        # setpoint 限速（防大阶跃超调振荡）
-        max_rate_pitch = 1.4   # rad/s
-        max_rate_yaw   = 1.5   # rad/s
-        dt = 0.03              # face_callback 约 30Hz
-        # pitch
+        # 死区 + 限速：随距离缩放
+        d_scale = max(0.8, (self.face_tracker.dist / 0.5) ** 0.5)
+        PITCH_DEADBAND = 0.015 * d_scale; YAW_DEADBAND = 0.02 * d_scale
+        max_rate_pitch = 2.0 / d_scale; max_rate_yaw = 2.0 / d_scale; dt = 0.03
+
         err_p = pitch - self.target_pitch
-        step_p = max(-max_rate_pitch * dt, min(max_rate_pitch * dt, err_p))
-        self.target_pitch += step_p
-        # yaw
+        if abs(err_p) > PITCH_DEADBAND:
+            self.target_pitch += max(-max_rate_pitch * dt, min(max_rate_pitch * dt, err_p))
+
         err_y = yaw - self.target_neck_yaw
-        step_y = max(-max_rate_yaw * dt, min(max_rate_yaw * dt, err_y))
-        self.target_neck_yaw += step_y
-        # roll
-        self.target_roll = roll
+        if abs(err_y) > YAW_DEADBAND:
+            self.target_neck_yaw += max(-max_rate_yaw * dt, min(max_rate_yaw * dt, err_y))
+
+        self.target_roll = 0.0
+
+        # 调试 CSV
+        # import os
+        # _csv_path = '/home/tuf/Doc/TDZK_T002_ROS_CONTROL/face_track.csv'
+        # if not hasattr(self, '_csv_fp'):
+        #     first = not os.path.exists(_csv_path)
+        #     self._csv_fp = open(_csv_path, 'a')
+        #     if first:
+        #         self._csv_fp.write('time_ms,has_target,raw_x,raw_y,raw_z,filt_x,filt_y,filt_z,filt_vx,filt_vy,filt_vz,point_yaw,point_pitch\n')
+        # ts_ms = int(self.get_clock().now().nanoseconds / 1e6)
+        # fk = self.face_tracker
+        # self._csv_fp.write(
+        #     str(ts_ms) + ',1,' +
+        #     str(float(msg.center.x)) + ',' + str(float(msg.center.y)) + ',' + str(float(msg.center.z)) + ',' +
+        #     str(float(fk._filtered[0])) + ',' + str(float(fk._filtered[1])) + ',' + str(float(fk._filtered[2])) + ',' +
+        #     str(float(fk.kf.x[3,0])) + ',' + str(float(fk.kf.x[4,0])) + ',' + str(float(fk.kf.x[5,0])) + ',' +
+        #     str(float(yaw)) + ',' + str(float(pitch)) + '\n')
+        # self._csv_fp.flush()
+
+        # # 测试：锁定云台
+        # self.target_roll = 0.0
+        # self.target_pitch = 0.0
+        # self.target_neck_yaw = 0.0
 
         # error_p = (pitch - self.last_pitch)
         # error_y = (yaw - self.robot.neck_yaw_joint.pos)
@@ -341,6 +438,7 @@ class TorqueControlNode(Node):
         #     f'{yaw:.6f},{pitch:.6f}\n'
         # )
         # self._debug_fp.flush()
+
         # _debug_log_path = '/home/tuf/Doc/TDZK_T002_ROS_CONTROL/face_raw_data.csv'
         # _debug_header = 'time_ms,has_target,X_cam,Y_cam,Z_cam\n'
         # if not hasattr(self, '_debug_fp'):
