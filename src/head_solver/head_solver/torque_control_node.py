@@ -10,6 +10,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from std_msgs.msg import Float64MultiArray
 from sensor_msgs.msg import JointState, Imu
+from geometry_msgs.msg import PointStamped
 from face_msgs.msg import FaceTarget
 from geometry_msgs.msg import Vector3Stamped
 
@@ -19,7 +20,7 @@ from collections import deque
 # ============================================================
 class FaceTrackerKF:
     """6维 KF: [x, y, z, vx, vy, vz], 观测 [x, y, z]"""
-    def __init__(self, accel_var=2.0):
+    def __init__(self, accel_var=5.0):
         self.kf = _make_6d_kf()
         self.state = 'LOST'
         self.detect_count = 0
@@ -70,7 +71,7 @@ class FaceTrackerKF:
         self.dist = max(0.3, float(np.linalg.norm(self._filtered)))
 
         r_scale = (self.dist / 0.5) ** 1.5
-        self.kf.R = np.diag([0.003 * r_scale] * 3)
+        self.kf.R = np.diag([0.008 * r_scale] * 3)
         self._state_machine(found)
 
         if self.state in ('DETECTING', 'TRACKING', 'TEMP_LOST'):
@@ -102,6 +103,87 @@ def _make_6d_kf():
     kf.R = np.diag([0.003, 0.003, 0.003])
     kf.P = np.eye(6) * 10.0
     return kf
+
+
+# ============================================================
+# 新滤波器: EMA + 3次多项式外推 (替代KF, 参数更直观)
+# ============================================================
+class EMAPolyFilter:
+    """逐轴 EMA 滤波 + 5点多项式外推预测"""
+    def __init__(self, alpha=0.55, beta=0.55):
+        self.alpha = alpha      # EMA 平滑系数: 小=平滑,大=响应快
+        self.beta  = beta       # 预测混合权重: 小=更信预测,大=更信测量
+        self.buf   = []         # 最近5个滤波后的值
+        self.ema   = None       # 当前 EMA 值
+        self.state = 'LOST'
+        self.detect_count = 0
+        self.lost_count = 0
+        self.DETECT_THRESH = 5
+        self.TEMP_LOST_MAX = 7
+        self._filtered = None   # (3,) numpy array, 最终输出
+
+    def update(self, face_msg, t_sec):
+        """返回 (tracking, filtered_xyz)"""
+        found = (face_msg is not None and getattr(face_msg, 'has_target', False))
+        self._state_machine(found)
+
+        tracking = self.state in ('DETECTING','TRACKING','TEMP_LOST')
+        if not found:
+            if tracking:
+                return (True, self._predict_step())
+            return (False, None)
+
+        raw = np.array([face_msg.center.x, face_msg.center.y, face_msg.center.z])
+
+        # EMA 滤波
+        if self.ema is None:
+            self.ema = raw.copy()
+        else:
+            self.ema = self.alpha * raw + (1.0 - self.alpha) * self.ema
+
+        # 维护 5 点历史
+        self.buf.append(self.ema.copy())
+        if len(self.buf) > 5:
+            self.buf.pop(0)
+
+        self._filtered = self._poly_predict()
+        return (True, self._filtered)
+
+    def _predict_step(self):
+        """丢脸时：用多项式外推一步"""
+        if self._filtered is not None:
+            xp = self._poly_predict()
+            self._filtered = xp
+            self.buf.append(xp.copy())
+            if len(self.buf) > 5:
+                self.buf.pop(0)
+        return self._filtered
+
+    def _poly_predict(self):
+        """3次多项式拟合5点 + 外推1步 + beta加权"""
+        if len(self.buf) >= 5:
+            x5,x4,x3,x2,x1 = self.buf[4],self.buf[3],self.buf[2],self.buf[1],self.buf[0]
+            x_pred = 3.5*x5 - 5.0*x4 + 4.0*x3 - 2.0*x2 + 0.5*x1
+            return self.beta * x5 + (1.0 - self.beta) * x_pred
+        elif len(self.buf) >= 1:
+            return self.buf[-1].copy()
+        return self.ema.copy()
+
+    def _state_machine(self, found):
+        if self.state == 'LOST':
+            if found: self.state = 'DETECTING'; self.detect_count = 1
+        elif self.state == 'DETECTING':
+            if found:
+                self.detect_count += 1
+                if self.detect_count >= self.DETECT_THRESH: self.state = 'TRACKING'
+            else: self.state = 'LOST'
+        elif self.state == 'TRACKING':
+            if not found: self.state = 'TEMP_LOST'; self.lost_count = 1
+        elif self.state == 'TEMP_LOST':
+            if found: self.state = 'TRACKING'
+            else:
+                self.lost_count += 1
+                if self.lost_count > self.TEMP_LOST_MAX: self.state = 'LOST'
 
 
 def calculate_target_angles(point_cam, current_roll, current_yaw, current_pitch):
@@ -283,7 +365,13 @@ class TorqueControlNode(Node):
         # self.win_x = deque(maxlen=self.window_size)
         # self.win_y = deque(maxlen=self.window_size)
         # self.win_z = deque(maxlen=self.window_size)
-        self.face_tracker = FaceTrackerKF()  # KF + 状态机
+        self.face_tracker = EMAPolyFilter(alpha=0.4, beta=0.6)  # EMA+多项式外推
+        self._pose_hist = deque(maxlen=200)   # (t_sec, yaw, pitch, roll)
+
+        # Rviz 可视化：原始/滤波后的3D点
+        self.pub_raw_face = self.create_publisher(PointStamped, '/debug/face_raw', 10)
+        self.pub_filt_face = self.create_publisher(PointStamped, '/debug/face_filt', 10)
+
         self.sub_joints = self.create_subscription(
             JointState, '/joint_states', self.joint_callback,
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST))
@@ -319,8 +407,6 @@ class TorqueControlNode(Node):
         if not tracking:
             return
 
-        point_cam = [float(xyz[0]), float(xyz[1]), float(xyz[2])]
-
         # self.win_x.append(msg.center.x)
         # self.win_y.append(msg.center.y)
         # self.win_z.append(msg.center.z)
@@ -341,30 +427,48 @@ class TorqueControlNode(Node):
         #     self.filt_z = a * med_z + (1 - a) * self.filt_z
 
 
-        # 注意: self.last_pitch 正=抬头(用户约定), 函数内正=低头(FK约定), 需取反
-        roll, yaw, pitch_fk, (X_b, Y_b, Z_b) = calculate_target_angles(
+        # 时间对齐：用图像捕获时间戳查最近的关节角
+        img_t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        best = None; best_dt = 999.0
+        for entry in self._pose_hist:
+            dt = abs(entry[0] - img_t)
+            if dt < best_dt:
+                best_dt = dt; best = entry
+        if best is not None and best_dt < 0.05:
+            _hist_yaw, _hist_pitch, _hist_roll = best[1], best[2], best[3]
+        else:
+            _hist_yaw = self.robot.neck_yaw_joint.pos
+            _hist_pitch = self.last_pitch
+            _hist_roll = self.last_roll
+
+        point_cam = [float(xyz[0]), float(xyz[1]), float(xyz[2])]
+
+        roll, yaw, pitch_fk, basexyz = calculate_target_angles(
             point_cam,
-            self.last_roll,
-            self.robot.neck_yaw_joint.pos,
-            -self.last_pitch,
+            _hist_roll,
+            _hist_yaw,
+            -_hist_pitch,
         )
         pitch = -pitch_fk
         pitch = max(-0.3, min(0.3, pitch))
 
-        # 死区 + 限速：随距离缩放
-        d_scale = max(0.8, (self.face_tracker.dist / 0.5) ** 0.5)
-        PITCH_DEADBAND = 0.015 * d_scale; YAW_DEADBAND = 0.02 * d_scale
-        max_rate_pitch = 2.0 / d_scale; max_rate_yaw = 2.0 / d_scale; dt = 0.03
-
-        err_p = pitch - self.target_pitch
-        if abs(err_p) > PITCH_DEADBAND:
-            self.target_pitch += max(-max_rate_pitch * dt, min(max_rate_pitch * dt, err_p))
-
-        err_y = yaw - self.target_neck_yaw
-        if abs(err_y) > YAW_DEADBAND:
-            self.target_neck_yaw += max(-max_rate_yaw * dt, min(max_rate_yaw * dt, err_y))
-
+        self.target_pitch = pitch
+        self.target_neck_yaw = yaw
         self.target_roll = 0.0
+
+        # Rviz 可视化
+        stamp = self.get_clock().now().to_msg()
+        raw_pt = PointStamped(); raw_pt.header.stamp = stamp; raw_pt.header.frame_id = 'base_link'
+        raw_pt.point.x = msg.center.x; raw_pt.point.y = msg.center.y; raw_pt.point.z = msg.center.z
+        #raw_pt.point.x = basexyz[0]; raw_pt.point.y = basexyz[1]; raw_pt.point.z = basexyz[2]
+        self.pub_raw_face.publish(raw_pt)
+
+        filt_pt = PointStamped(); filt_pt.header.stamp = stamp; filt_pt.header.frame_id = 'base_link'
+        filt_pt.point.x = float(xyz[0]); filt_pt.point.y = float(xyz[1]); filt_pt.point.z = float(xyz[2])
+        self.pub_filt_face.publish(filt_pt)
+
+        # self.get_logger().info(
+        # 'run',throttle_duration_sec=0.5)
 
         # 调试 CSV
         # import os
@@ -643,6 +747,13 @@ class TorqueControlNode(Node):
                     self.robot.wheel_right_yaw_joint_tar, self.robot.wheel_right_roll_joint_tar]
         self.pub_cmd.publish(cmd)
 
+        # 缓存当前姿态供 face_callback 时间对齐
+        self._pose_hist.append((
+            self.get_clock().now().nanoseconds / 1e9,
+            self.robot.neck_yaw_joint.pos,
+            self.last_pitch,
+            self.last_roll))
+
 def main(args=None):
     rclpy.init(args=args)
     rclpy.spin(TorqueControlNode())
@@ -650,6 +761,7 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
 
 
 
